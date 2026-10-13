@@ -1,6 +1,6 @@
 <div id="wrap">
   <div class="row">
-    <input id="url" type="text" placeholder="https://raw.githubusercontent.com/KULLANICI/fmatches-runner-scripts/main/latest.js" />
+    <input id="url" type="text" placeholder="https://api.github.com/repos/KULLANICI/fmatches-runner-scripts/contents/latest.js?ref=main" />
     <button id="fetchrun" class="primary">Fetch &amp; Run</button>
   </div>
   <div id="meta">Hazır.</div>
@@ -58,10 +58,13 @@
     post({ type: 'save-url', url: url });
     // cache buster: CDN eski sürümü vermesin
     var bust = url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
+    var isApi = url.indexOf('api.github.com') !== -1;
+    var opts = { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } };
+    if (isApi) opts.headers['Accept'] = 'application/vnd.github.raw';
     setMeta('Çekiliyor...');
-    return fetch(bust, { cache: 'no-store' })
+    return fetch(bust, opts)
       .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) throw new Error('HTTP ' + r.status + (isApi ? '' : ' (raw adres, önbellek riski)'));
         return r.text();
       })
       .then(function (src) {
