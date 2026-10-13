@@ -1,51 +1,68 @@
-// step 64 · Mobil ticker etiketini kisalt (UPCOMING TOURNAMENTS tasiyordu)
+// step 65 · inspect: eklenen sosyal ikonlar + Section tasmasi (salt okunur)
 const out = { steps: [], errors: [] };
 
-const SHORT = { Manager: 'TOURNAMENTS', Player: 'TRIALS' };
-
 async function step(name, fn) {
-  try { const r = await fn(); out.steps.push({ name, done: true, result: r }); return r; }
-  catch (e) { out.errors.push({ name, error: String(e && e.message ? e.message : e) }); return null; }
-}
-async function loadFontsOf(node) {
-  const len = node.characters.length;
-  const fonts = len > 0 ? node.getRangeAllFontNames(0, len) : [node.fontName];
-  for (const f of fonts) if (f && f.family) await figma.loadFontAsync(f);
+  try { out.steps.push({ name, result: await fn() }); }
+  catch (e) { out.errors.push({ name, error: String(e && e.message ? e.message : e) }); }
 }
 
-const setId = await step('Ticker set bul', async () => {
+function box(n) {
+  return { name: n.name, type: n.type, id: n.id,
+    x: Math.round(n.x), y: Math.round(n.y),
+    w: Math.round(n.width), h: Math.round(n.height) };
+}
+
+await step('sekme 01 ust seviye', async () => {
   const p = figma.root.children.find(n => /^01/.test(n.name));
   await p.loadAsync();
-  const set = p.children.find(n => n.name === 'Ticker' && n.type === 'COMPONENT_SET')
-           || p.findOne(n => n.name === 'Ticker' && n.type === 'COMPONENT_SET');
-  if (!set) throw new Error('Ticker set yok');
-  return set.id;
+  return p.children.map(box);
 });
 
-await step('mobil etiketleri kisalt', async () => {
-  const set = await figma.getNodeByIdAsync(setId);
-  const done = [];
-  for (const comp of set.children) {
-    const m = /Device=Mobile, Role=(\w+)/.exec(comp.name);
-    if (!m || !SHORT[m[1]]) continue;
-    const label = comp.children.find(c => c.name === 'Ticker label');
-    if (!label) continue;
-    await loadFontsOf(label);
-    label.characters = SHORT[m[1]];
-    done.push(comp.name + ' -> ' + SHORT[m[1]]);
+await step('4 · Home page section tasmasi', async () => {
+  const p = figma.root.children.find(n => /^01/.test(n.name));
+  const sec = p.children.find(n => /Home page/i.test(n.name));
+  if (!sec) throw new Error('Home page section yok');
+  const kids = sec.children.map(box);
+  const maxBottom = Math.max(...sec.children.map(n => n.y + n.height));
+  const maxRight = Math.max(...sec.children.map(n => n.x + n.width));
+  return {
+    section: box(sec),
+    sectionType: sec.type,
+    icerikAltSinir: Math.round(maxBottom),
+    icerikSagSinir: Math.round(maxRight),
+    altTasma: Math.round(maxBottom - sec.height),
+    sagTasma: Math.round(maxRight - sec.width),
+    children: kids
+  };
+});
+
+await step('tum sectionlarda tasma', async () => {
+  const p = figma.root.children.find(n => /^01/.test(n.name));
+  const r = [];
+  for (const sec of p.children) {
+    if (!('children' in sec) || !sec.children.length) continue;
+    const b = Math.max(...sec.children.map(n => n.y + n.height));
+    const right = Math.max(...sec.children.map(n => n.x + n.width));
+    r.push({ section: sec.name, type: sec.type, h: Math.round(sec.height), w: Math.round(sec.width),
+             altTasma: Math.round(b - sec.height), sagTasma: Math.round(right - sec.width) });
   }
-  return done;
+  return r;
 });
 
-await step('tasma kontrolu', async () => {
-  const set = await figma.getNodeByIdAsync(setId);
-  return set.children.map(comp => {
-    const row = comp.children.find(c => c.name === 'Ticker items');
-    if (!row) return null;
-    let used = 0;
-    row.children.forEach((it, i) => { used += it.width + (i ? row.itemSpacing : 0); });
-    return { variant: comp.name, satir: Math.round(row.width), icerik: Math.round(used), sigdi: used <= row.width + 0.5 };
-  }).filter(Boolean);
+await step('sosyal ikon adaylari', async () => {
+  const p = figma.root.children.find(n => /^01/.test(n.name));
+  const re = /linkedin|instagram|facebook|twitter|simple-?icons|^x$|logo/i;
+  const found = p.findAll(n => re.test(n.name) && n.type !== 'TEXT');
+  return found.slice(0, 40).map(n => ({
+    ...box(n),
+    parent: n.parent ? n.parent.name : null,
+    cocuklar: 'children' in n ? n.children.map(c => c.name + ' (' + c.type + ')') : null
+  }));
+});
+
+await step('son eklenen kok dugumler', async () => {
+  const p = figma.root.children.find(n => /^01/.test(n.name));
+  return p.children.slice(-6).map(box);
 });
 
 return out;
