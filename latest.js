@@ -1,4 +1,4 @@
-// step 60 · M1 Ticker rol varyantlari (6 rol x 2 cihaz) + M6 footer sosyal medya
+// step 61 · M1 Ticker rol varyantlari (6 rol x 2 cihaz) + M6 footer sosyal medya
 const out = { steps: [], errors: [], info: [] };
 
 const VAR = { bgSubtle:'1:30', accent:'1:35', textPrimary:'1:38', textSecondary:'1:39' };
@@ -46,6 +46,11 @@ const CAPTIONS = {
 async function step(name, fn) {
   try { const r = await fn(); out.steps.push({ name, done: true, result: r }); return r; }
   catch (e) { out.errors.push({ name, error: String(e && e.message ? e.message : e) }); return null; }
+}
+
+function findSet(page, name) {
+  return page.children.find(n => n.name === name && n.type === 'COMPONENT_SET')
+      || page.findOne(n => n.name === name && n.type === 'COMPONENT_SET');
 }
 
 const varCache = {};
@@ -128,7 +133,7 @@ async function buildEvents(comp, conf, device) {
 const tickerSet = await step('Ticker set bul', async () => {
   const p = figma.root.children.find(n => /^01/.test(n.name));
   await p.loadAsync();
-  const set = p.children.find(n => n.name === 'Ticker' && n.type === 'COMPONENT_SET');
+  const set = findSet(p, 'Ticker');
   if (!set) throw new Error('Ticker component set bulunamadi');
   const base = set.children.find(c => /Device=Desktop/.test(c.name));
   const tt = base.children.find(c => c.name === 'Ticker text');
@@ -244,7 +249,7 @@ await step('Ticker rol durumlari panosu', async () => {
 await step('M6 footer sosyal medya', async () => {
   const p = figma.root.children.find(n => /^01/.test(n.name));
   await p.loadAsync();
-  const footer = p.children.find(n => n.name === 'Footer' && n.type === 'COMPONENT_SET');
+  const footer = findSet(p, 'Footer');
   if (!footer) throw new Error('Footer set yok');
   const want = ['LinkedIn', 'Instagram', 'Facebook', 'X'];
   const touched = [];
