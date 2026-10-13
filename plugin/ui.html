@@ -59,13 +59,19 @@
     // cache buster: CDN eski sürümü vermesin
     var bust = url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
     var isApi = url.indexOf('api.github.com') !== -1;
-    var opts = { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } };
-    if (isApi) opts.headers['Accept'] = 'application/vnd.github.raw';
     setMeta('Çekiliyor...');
-    return fetch(bust, opts)
+    return fetch(bust, { cache: 'no-store' })
       .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status + (isApi ? '' : ' (raw adres, önbellek riski)'));
+        if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.text();
+      })
+      .then(function (body) {
+        if (!isApi) return body;
+        var j = JSON.parse(body);
+        var bin = atob((j.content || '').replace(/\n/g, ''));
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new TextDecoder('utf-8').decode(bytes);
       })
       .then(function (src) {
         $('code').value = src;
