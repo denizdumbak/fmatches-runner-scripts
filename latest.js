@@ -1,182 +1,151 @@
-// step 68 · Social icon componenti (4 marka x Default/Hover) + koyu footer
-const out = { steps: [], errors: [] };
+// step 69 · M4: uc CTA uc hedefe ayrilir, slayt 1'e ikincil buton eklenir
+const out = { steps: [], errors: [], onceki: [] };
 
-const V = { inverse:'1:31', textInverse:'1:41', textPrimary:'1:38' };
-const BRANDS = [
-  { key:'LinkedIn',  match:/linkedin/i,            hoverBg:'#0A66C2', hoverGlyph:'#FFFFFF' },
-  { key:'Instagram', match:/instagram/i,           hoverBg:'#E4405F', hoverGlyph:'#FFFFFF' },
-  { key:'Facebook',  match:/facebook/i,            hoverBg:'#0866FF', hoverGlyph:'#FFFFFF' },
-  { key:'X',         match:/(^|[^a-z])x([^a-z]|$)|twitter/i, hoverBg:'#FFFFFF', hoverGlyph:'#111613' }
-];
-const URLS = {
-  LinkedIn:'linkedin.com/company/fmatches', Instagram:'instagram.com/friendlymatches.international',
-  Facebook:'facebook.com/FriendlyMatches.International', X:'x.com/f_matches'
-};
+const LABEL_PROP = 'Label#8:0';
 
 async function step(name, fn) {
   try { const r = await fn(); out.steps.push({ name, done:true, result:r }); return r; }
   catch (e) { out.errors.push({ name, error:String(e && e.message ? e.message : e) }); return null; }
 }
-function hexRgb(h){ return { r:parseInt(h.slice(1,3),16)/255, g:parseInt(h.slice(3,5),16)/255, b:parseInt(h.slice(5,7),16)/255 }; }
-const vc = {};
-async function getVar(id){ if(!vc[id]) vc[id] = await figma.variables.getVariableByIdAsync(id.indexOf('VariableID')===0?id:'VariableID:'+id); return vc[id]; }
-async function paintVar(node, id){
-  const v = await getVar(id);
-  node.fills = [figma.variables.setBoundVariableForPaint({type:'SOLID',color:{r:0,g:0,b:0}},'color',v)];
+function labelOf(inst) {
+  try {
+    const p = inst.componentProperties || {};
+    for (const k of Object.keys(p)) if (/^Label/.test(k)) return p[k].value;
+  } catch (e) {}
+  const t = inst.findOne ? inst.findOne(n => n.type === 'TEXT') : null;
+  return t ? t.characters : null;
 }
-function paintHex(node, hex){ node.fills = [{ type:'SOLID', color: hexRgb(hex) }]; }
-function paintAllVectors(node, hex){
-  const vs = 'findAll' in node ? node.findAll(n => 'fills' in n) : [];
-  for (const v of vs) v.fills = [{ type:'SOLID', color: hexRgb(hex) }];
-  if ('fills' in node && node.type !== 'FRAME') node.fills = [{ type:'SOLID', color: hexRgb(hex) }];
+async function setLabel(inst, text) {
+  const p = inst.componentProperties || {};
+  const key = Object.keys(p).find(k => /^Label/.test(k));
+  if (key) { inst.setProperties({ [key]: text }); return 'property'; }
+  const t = inst.findOne(n => n.type === 'TEXT');
+  if (!t) throw new Error('metin katmani yok');
+  const fonts = t.getRangeAllFontNames(0, Math.max(1, t.characters.length));
+  for (const f of fonts) await figma.loadFontAsync(f);
+  t.characters = text;
+  return 'text';
 }
-async function loadFontsOf(n){
-  const len = n.characters.length;
-  const fonts = len>0 ? n.getRangeAllFontNames(0,len) : [n.fontName];
-  for (const f of fonts) if (f && f.family) await figma.loadFontAsync(f);
+function setStyle(inst, style) {
+  const p = inst.componentProperties || {};
+  if (p.Style) inst.setProperties({ Style: style });
 }
 
-// yeni degiskenlerin id'leri
-const IDS = await step('koyu zemin degiskenleri', async () => {
-  const all = await figma.variables.getLocalVariablesAsync('COLOR');
-  const f = n => { const v = all.find(x => x.name === n); if (!v) throw new Error(n + ' yok, once step 67'); return v.id; };
-  return { sec: f('text/inverse-secondary'), border: f('border/inverse') };
+// ---------- once oku ----------
+await step('mevcut butonlar', async () => {
+  const p1 = figma.root.children.find(n => /^01/.test(n.name));
+  await p1.loadAsync();
+  const hero = p1.findOne(n => n.name === 'Hero slide' && n.type === 'COMPONENT_SET');
+  const rows = [];
+  if (hero) for (const v of hero.children) {
+    const acts = v.findOne(n => /^Actions$/i.test(n.name));
+    rows.push({ yer: 'Hero slide · ' + v.name,
+      actionsLayout: acts ? acts.layoutMode : null,
+      butonlar: acts ? acts.children.map(c => ({ ad: c.name, tur: c.type, metin: labelOf(c) })) : 'Actions yok' });
+  }
+  const p2 = figma.root.children.find(n => /^02/.test(n.name));
+  await p2.loadAsync();
+  for (const frame of p2.children) {
+    if (!/^Home · (Desktop|Mobile)$/.test(frame.name)) continue;
+    const cta = frame.children.find(c => /closing/i.test(c.name));
+    if (!cta) { rows.push({ yer: frame.name, not: 'Closing bloku bulunamadi', bolumler: frame.children.map(c => c.name) }); continue; }
+    const insts = cta.findAll(n => n.type === 'INSTANCE' && /button/i.test(n.name));
+    rows.push({ yer: frame.name + ' · ' + cta.name, butonlar: insts.map(c => ({ ad: c.name, metin: labelOf(c) })) });
+  }
+  out.onceki = rows;
+  return rows.length + ' yer okundu';
 });
 
-// ---------- 1. Social icon component ----------
-const SET = await step('Social icon componenti', async () => {
-  const p = figma.root.children.find(n => /^01/.test(n.name));
-  await p.loadAsync();
-
-  const existing = p.children.find(n => n.name === 'Social icon' && n.type === 'COMPONENT_SET');
-  if (existing) existing.remove();
-
-  const loose = p.children.filter(n => n.type === 'FRAME' && /icon|linkedin|instagram|facebook|twitter|^x$/i.test(n.name) && n.width <= 64);
-  if (!loose.length) throw new Error('Sayfada serbest ikon bulunamadi');
-
-  const comps = [];
-  const used = [];
-  for (const b of BRANDS) {
-    const src = loose.find(n => b.match.test(n.name));
-    if (!src) throw new Error(b.key + ' ikonu bulunamadi. Bulunanlar: ' + loose.map(n => n.name).join(', '));
-    used.push(src.name + ' -> ' + b.key);
-
-    for (const state of ['Default', 'Hover']) {
-      const comp = figma.createComponent();
-      comp.name = 'Brand=' + b.key + ', State=' + state;
-      comp.resize(32, 32);
-      comp.layoutMode = 'HORIZONTAL';
-      comp.primaryAxisAlignItems = 'CENTER';
-      comp.counterAxisAlignItems = 'CENTER';
-      comp.cornerRadius = 999;
-      comp.clipsContent = false;
-      if (state === 'Hover') paintHex(comp, b.hoverBg); else comp.fills = [];
-
-      const glyph = src.clone();
-      glyph.name = 'Glyph';
-      const factor = 18 / src.width;
-      glyph.rescale(factor);
-      comp.appendChild(glyph);
-      glyph.layoutSizingHorizontal = 'FIXED';
-      glyph.layoutSizingVertical = 'FIXED';
-      glyph.fills = [];
-      paintAllVectors(glyph, state === 'Hover' ? b.hoverGlyph : '#FFFFFF');
-
-      comp.description = b.key + ' · ' + URLS[b.key] + (state === 'Hover' ? ' · hover fills the circle with the brand colour' : '');
-      comps.push(comp);
-    }
-  }
-
-  const set = figma.combineAsVariants(comps, p);
-  set.name = 'Social icon';
-  set.layoutMode = 'HORIZONTAL';
-  set.itemSpacing = 24;
-  set.paddingTop = set.paddingBottom = set.paddingLeft = set.paddingRight = 32;
-  set.primaryAxisSizingMode = 'AUTO';
-  set.counterAxisSizingMode = 'AUTO';
-  set.description = 'Social links in the footer. Default is the white glyph on the dark footer; hover fills the circle with the brand colour. X inverts, because its brand colour is black.';
-
-  // konum: Home page sectionunun altina degil, Navigation sectionunun yanina koymadan sayfa kokunde birak
-  const maxY = Math.max(...p.children.filter(n => n.type === 'SECTION').map(n => n.y + n.height));
-  set.x = 1640; set.y = maxY + 160;
-
-  // hover gecisleri
-  for (const b of BRANDS) {
-    const d = set.children.find(c => c.name === 'Brand=' + b.key + ', State=Default');
-    const h = set.children.find(c => c.name === 'Brand=' + b.key + ', State=Hover');
-    if (d && h) {
-      await d.setReactionsAsync([{
-        trigger: { type: 'ON_HOVER' },
-        actions: [{ type: 'NODE', destinationId: h.id, navigation: 'CHANGE_TO',
-                    transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.15 },
-                    preserveScrollPosition: false }]
-      }]);
-    }
-  }
-
-  // kaynak ikonlar temizlensin
-  for (const n of loose) n.remove();
-
-  return { eslesme: used, varyant: set.children.length, id: set.id };
-});
-
-// ---------- 2. Koyu footer ----------
-await step('footer koyuya alinir', async () => {
-  const p = figma.root.children.find(n => /^01/.test(n.name));
-  const footer = p.children.find(n => n.name === 'Footer' && n.type === 'COMPONENT_SET')
-              || p.findOne(n => n.name === 'Footer' && n.type === 'COMPONENT_SET');
-  if (!footer) throw new Error('Footer yok');
-  const set = await figma.getNodeByIdAsync(SET.id);
-
+// ---------- slayt 1 ----------
+await step('slayt 1 · iki buton', async () => {
+  const p1 = figma.root.children.find(n => /^01/.test(n.name));
+  const hero = p1.findOne(n => n.name === 'Hero slide' && n.type === 'COMPONENT_SET');
+  if (!hero) throw new Error('Hero slide yok');
   const log = [];
-  for (const variant of footer.children) {
-    await paintVar(variant, V.inverse);
+  for (const v of hero.children) {
+    if (!/Slide=1/.test(v.name)) continue;
+    const mobile = /Device=Mobile/.test(v.name);
+    const acts = v.findOne(n => /^Actions$/i.test(n.name));
+    if (!acts) { log.push(v.name + ' · Actions yok'); continue; }
 
-    // alt satirdaki ince cizgi
-    const bottom = variant.findOne(n => /Footer bottom/i.test(n.name));
-    if (bottom) {
-      if (bottom.strokes && bottom.strokes.length) {
-        const v = await getVar(IDS.border);
-        bottom.strokes = [figma.variables.setBoundVariableForPaint({type:'SOLID',color:{r:0,g:0,b:0}},'color',v)];
-      }
-      const rules = bottom.findAll(n => n.type === 'RECTANGLE' || n.type === 'LINE');
-      for (const r of rules) await paintVar(r, IDS.border);
+    let btns = acts.children.filter(c => c.type === 'INSTANCE');
+    if (!btns.length) { log.push(v.name + ' · buton yok'); continue; }
+
+    // birincil
+    await setLabel(btns[0], 'Create your free profile');
+    setStyle(btns[0], 'Primary');
+    btns[0].name = 'Button · Create your free profile';
+
+    // ikincil
+    if (btns.length < 2) {
+      const clone = btns[0].clone();
+      acts.appendChild(clone);
+      btns = acts.children.filter(c => c.type === 'INSTANCE');
     }
+    await setLabel(btns[1], 'Browse the database');
+    setStyle(btns[1], 'Secondary');
+    btns[1].name = 'Button · Browse the database';
 
-    // metinler
-    for (const t of variant.findAll(n => n.type === 'TEXT')) {
-      const inBottom = bottom && bottom.findOne ? !!bottom.findOne(n => n.id === t.id) : false;
-      await paintVar(t, inBottom ? IDS.sec : V.textInverse);
+    // fazlasi varsa birak, sadece raporla
+    if (mobile) {
+      acts.layoutMode = 'VERTICAL';
+      acts.itemSpacing = 12;
+      acts.layoutSizingHorizontal = 'FILL';
+      for (const b of acts.children) if (b.type === 'INSTANCE') b.layoutSizingHorizontal = 'FILL';
+    } else {
+      acts.layoutMode = 'HORIZONTAL';
+      acts.itemSpacing = 12;
     }
+    log.push(v.name + ' · ' + acts.children.filter(c => c.type === 'INSTANCE').length + ' buton');
+  }
+  return log;
+});
 
-    // sosyal metinleri ikonla degistir
-    const wrap = variant.findOne(n => n.name === 'Social links' && n.type === 'FRAME');
-    if (wrap) {
-      for (const c of [...wrap.children]) c.remove();
-      wrap.itemSpacing = 8;
-      for (const b of BRANDS) {
-        const comp = set.children.find(c => c.name === 'Brand=' + b.key + ', State=Default');
-        wrap.appendChild(comp.createInstance());
+// ---------- kapanis bloku ----------
+await step('kapanis CTA · haritaya', async () => {
+  const p2 = figma.root.children.find(n => /^02/.test(n.name));
+  const log = [];
+  for (const frame of p2.children) {
+    if (!/^Home · (Desktop|Mobile)$/.test(frame.name)) continue;
+    const cta = frame.children.find(c => /closing/i.test(c.name));
+    if (!cta) { log.push(frame.name + ' · closing yok'); continue; }
+    const insts = cta.findAll(n => n.type === 'INSTANCE' && /button/i.test(n.name));
+    for (const b of insts) {
+      const cur = labelOf(b);
+      if (cur && /find a player/i.test(cur)) {
+        await setLabel(b, 'Find clubs near you');
+        b.name = 'Button · Find clubs near you';
+        log.push(frame.name + ' · ' + cur + ' -> Find clubs near you');
+      } else {
+        log.push(frame.name + ' · dokunulmadi: ' + cur);
       }
-      log.push(variant.name + ' · 4 ikon');
     }
   }
   return log;
 });
 
-await step('Section tasmasi', async () => {
-  const p = figma.root.children.find(n => /^01/.test(n.name));
-  const fixed = [];
-  for (const sec of p.children) {
-    if (sec.type !== 'SECTION' || !sec.children.length) continue;
-    const bottom = Math.max(...sec.children.map(n => n.y + n.height));
-    const right = Math.max(...sec.children.map(n => n.x + n.width));
-    if (bottom + 80 > sec.height || right + 80 > sec.width) {
-      sec.resizeWithoutConstraints(Math.max(sec.width, right + 80), bottom + 80);
-      fixed.push(sec.name);
-    }
+// ---------- developer notu ----------
+await step('hedef notlari', async () => {
+  const p1 = figma.root.children.find(n => /^01/.test(n.name));
+  const hero = p1.findOne(n => n.name === 'Hero slide' && n.type === 'COMPONENT_SET');
+  if (hero) hero.description = 'Hero carousel. Slide 1 actions: Create your free profile goes to signup, Browse the database goes to /site/search?query=. Slide 2: Find a player goes to the player search. Slide 3: booking.';
+  return 'Hero slide aciklamasi yazildi';
+});
+
+await step('tasma kontrolu', async () => {
+  const p1 = figma.root.children.find(n => /^01/.test(n.name));
+  const hero = p1.findOne(n => n.name === 'Hero slide' && n.type === 'COMPONENT_SET');
+  const r = [];
+  for (const v of hero.children) {
+    if (!/Slide=1/.test(v.name)) continue;
+    const acts = v.findOne(n => /^Actions$/i.test(n.name));
+    if (!acts) continue;
+    let used = 0;
+    acts.children.forEach((c, i) => { used += c.width + (i ? acts.itemSpacing : 0); });
+    r.push({ variant: v.name, actions: Math.round(acts.width), icerik: Math.round(used),
+             yon: acts.layoutMode, sigdi: acts.layoutMode === 'VERTICAL' ? true : used <= acts.width + 0.5 });
   }
-  return fixed.length ? fixed : 'tasma yok';
+  return r;
 });
 
 return out;
