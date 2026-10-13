@@ -1,135 +1,113 @@
-// step 71 · Network and figures: ilk butonu "Join our professional network"a geri al (script 70 düzeltmesi)
+// step 72 · Inspect (salt okunur): surukenen gorseller, hero slayt 1 agaci, Role card yapisi, bos alan
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 
 const page = re => figma.root.children.find(p => re.test(p.name));
-const pageHome = page(/^02/);
-if (!pageHome) { return { errors: ['02 sayfasi bulunamadi'] }; }
-await pageHome.loadAsync();
+const page0 = page(/^01/), pageHome = page(/^02/);
+for (const p of [page0, pageHome]) { if (p) await p.loadAsync(); }
 
-// Butonun etiketi Inter ile yazili; metin ozelligini degistirmeden once fontlari yukle
-for (const style of ['Regular', 'Medium', 'Semi Bold']) {
-  try { await figma.loadFontAsync({ family: 'Inter', style: style }); } catch (e) { report.errors.push('font ' + style + ': ' + e.message); }
-}
+const box = n => { const b = n.absoluteBoundingBox; return b ? { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } : null; };
 
-const PRIMARY_LABEL = 'Join our professional network';
-const SECONDARY_LABEL = 'Find clubs near you';
-
-// Bir instance'in TEXT tipindeki Label ozelliginin anahtarini bul (Label#8:0 gibi)
-function labelKeyOf(inst) {
-  const props = inst.componentProperties;
-  for (const k of Object.keys(props)) {
-    if (/^Label(#|$)/.test(k) && props[k].type === 'TEXT') return k;
+function tree(n, depth, maxDepth) {
+  const b = box(n);
+  const row = {
+    name: n.name,
+    type: n.type,
+    size: b ? b.w + 'x' + b.h : '-',
+    at: b ? b.x + ',' + b.y : '-'
+  };
+  if (n.type === 'TEXT') row.text = n.characters.length > 40 ? n.characters.slice(0, 40) + '...' : n.characters;
+  if (n.type === 'INSTANCE') {
+    try { row.props = Object.keys(n.componentProperties).join(' | '); } catch (e) { row.props = '?'; }
   }
-  for (const k of Object.keys(props)) {
-    if (props[k].type === 'TEXT') return k;
+  if ('fills' in n && Array.isArray(n.fills)) {
+    const img = n.fills.filter(f => f.type === 'IMAGE');
+    if (img.length) row.imageFill = img.map(f => f.scaleMode).join(',');
   }
-  return null;
-}
-
-function hasVariant(inst, name) {
-  const props = inst.componentProperties;
-  return Object.prototype.hasOwnProperty.call(props, name) && props[name].type === 'VARIANT';
-}
-
-function boxOf(n) {
-  const b = n.absoluteBoundingBox;
-  return b ? b : { x: 0, y: 0 };
-}
-
-// Blok icindeki butonlari konuma gore sirala: once satir (y), sonra soldan saga (x)
-function orderedButtons(block) {
-  const all = block.findAll(n => n.type === 'INSTANCE');
-  const buttons = [];
-  for (const n of all) {
-    if (labelKeyOf(n)) buttons.push(n);
+  if ('children' in n && depth < maxDepth) {
+    row.children = n.children.map(c => tree(c, depth + 1, maxDepth));
+  } else if ('children' in n) {
+    row.childCount = n.children.length;
   }
-  buttons.sort((a, b) => {
-    const ba = boxOf(a), bb = boxOf(b);
-    if (Math.abs(ba.y - bb.y) > 8) return ba.y - bb.y;
-    return ba.x - bb.x;
+  return row;
+}
+
+// 1 · Suruklenen gorseller: 02 sayfasinin kokunde duran, adinda "photo" gecen ya da image fill tasiyan node'lar
+await step('Suruklenen gorseller', async () => {
+  const found = [];
+  for (const n of pageHome.children) {
+    let hasImage = false;
+    if ('fills' in n && Array.isArray(n.fills)) hasImage = n.fills.some(f => f.type === 'IMAGE');
+    if (/photo|cutout|hero|role/i.test(n.name) || hasImage) {
+      const b = box(n);
+      found.push({ name: n.name, type: n.type, size: b ? b.w + 'x' + b.h : '-', at: b ? b.x + ',' + b.y : '-', imageFill: hasImage });
+    }
+  }
+  report.info['02 sayfasi kok node adlari'] = pageHome.children.map(n => n.name + ' [' + n.type + ']');
+  report.info['gorsel adaylari'] = found;
+});
+
+// 2 · Sayfadaki her seyin sinirlari: yeni panoyu nereye koyacagiz
+await step('Bos alan', async () => {
+  let maxX = -Infinity, minY = Infinity;
+  const rows = [];
+  for (const n of pageHome.children) {
+    const b = box(n);
+    if (!b) continue;
+    rows.push({ name: n.name, x: b.x, y: b.y, w: b.w, h: b.h });
+    if (b.x + b.w > maxX) maxX = b.x + b.w;
+    if (b.y < minY) minY = b.y;
+  }
+  report.info['02 sayfasi yerlesim'] = rows;
+  report.info['en sag kenar'] = Math.round(maxX);
+  report.info['en ust kenar'] = Math.round(minY);
+});
+
+// 3 · Home · Desktop ust seviye bolumler
+await step('Home · Desktop bolumler', async () => {
+  const home = pageHome.children.find(n => n.name === 'Home · Desktop');
+  if (!home) throw new Error('Home · Desktop yok');
+  report.info['Home · Desktop bolumler'] = home.children.map(n => {
+    const b = box(n);
+    return { name: n.name, type: n.type, size: b ? b.w + 'x' + b.h : '-' };
   });
-  return buttons;
-}
+});
 
-async function fixFrame(frameName) {
-  let frame = pageHome.children.find(n => n.name === frameName);
-  if (!frame) frame = pageHome.findOne(n => n.name === frameName);
-  if (!frame) throw new Error('frame bulunamadi: ' + frameName);
+// 4 · Hero slayt 1 agaci (4 seviye)
+await step('Hero slayt 1 agaci', async () => {
+  const home = pageHome.children.find(n => n.name === 'Home · Desktop');
+  const hero = home.children.find(n => /hero/i.test(n.name));
+  if (!hero) throw new Error('hero bolumu bulunamadi');
+  report.info['hero agaci'] = tree(hero, 0, 4);
+});
 
-  const block = frame.findOne(n => /^Network and figures/i.test(n.name));
-  if (!block) throw new Error('Network and figures blogu bulunamadi: ' + frameName);
+// 5 · Roles bolumu agaci (4 seviye)
+await step('Roles bolumu agaci', async () => {
+  const home = pageHome.children.find(n => n.name === 'Home · Desktop');
+  const roles = home.children.find(n => /^roles|built for every role/i.test(n.name));
+  if (!roles) throw new Error('Roles bolumu bulunamadi');
+  report.info['roles agaci'] = tree(roles, 0, 4);
+});
 
-  const buttons = orderedButtons(block);
-  const before = [];
-  for (const b of buttons) {
-    const k = labelKeyOf(b);
-    before.push({
-      layer: b.name,
-      label: b.componentProperties[k].value,
-      style: hasVariant(b, 'Style') ? b.componentProperties.Style.value : '(yok)',
-      x: Math.round(boxOf(b).x),
-      y: Math.round(boxOf(b).y)
-    });
-  }
-  report.info[frameName + ' · once'] = before;
-
-  if (buttons.length < 2) throw new Error(frameName + ': blokta ' + buttons.length + ' buton var, 2 bekleniyordu. Degisiklik yapilmadi.');
-  if (buttons.length > 2) report.errors.push(frameName + ': blokta ' + buttons.length + ' buton bulundu, ilk ikisi kullanildi.');
-
-  const targets = [
-    { inst: buttons[0], label: PRIMARY_LABEL, style: 'Primary' },
-    { inst: buttons[1], label: SECONDARY_LABEL, style: 'Secondary' }
-  ];
-
-  for (const t of targets) {
-    // Once varyant, sonra metin: varyant degisimi override sirasini bozmasin
-    if (hasVariant(t.inst, 'Style') && t.inst.componentProperties.Style.value !== t.style) {
-      try { t.inst.setProperties({ Style: t.style }); } catch (e) { report.errors.push(frameName + ' varyant (' + t.label + '): ' + e.message); }
-    }
-    const k = labelKeyOf(t.inst);
-    if (!k) { report.errors.push(frameName + ': Label ozelligi bulunamadi (' + t.inst.name + ')'); continue; }
-    if (t.inst.componentProperties[k].value !== t.label) {
-      const set = {}; set[k] = t.label;
-      t.inst.setProperties(set);
-    }
-    t.inst.name = t.label;
-  }
-
-  const after = [];
-  for (const b of buttons.slice(0, 2)) {
-    const k = labelKeyOf(b);
-    after.push({
-      label: b.componentProperties[k].value,
-      style: hasVariant(b, 'Style') ? b.componentProperties.Style.value : '(yok)'
-    });
-  }
-  report.info[frameName + ' · sonra'] = after;
-}
-
-await step('Home · Desktop · Network and figures', () => fixFrame('Home · Desktop'));
-await step('Home · Mobile · Network and figures', () => fixFrame('Home · Mobile'));
-
-// Taşma kontrolü: masaüstünde butonların bulunduğu satır bloktan taşıyor mu
-await step('Taşma kontrolü', async () => {
+// 6 · Hero slide ve Role card component setleri
+await step('Component setleri', async () => {
+  const want = ['Hero slide', 'Role card', 'Player card', 'Booking', 'Message'];
   const out = {};
-  for (const frameName of ['Home · Desktop', 'Home · Mobile']) {
-    let frame = pageHome.children.find(n => n.name === frameName);
-    if (!frame) continue;
-    const block = frame.findOne(n => /^Network and figures/i.test(n.name));
-    if (!block) continue;
-    const bb = boxOf(block);
-    const bw = block.absoluteBoundingBox ? block.absoluteBoundingBox.width : 0;
-    const rows = [];
-    for (const b of orderedButtons(block).slice(0, 2)) {
-      const r = b.absoluteBoundingBox;
-      if (!r) continue;
-      rows.push({ label: b.name, w: Math.round(r.width), right: Math.round(r.x + r.width - bb.x), blokGenislik: Math.round(bw) });
-    }
-    out[frameName] = rows;
+  for (const name of want) {
+    let c = page0.children.find(n => n.name === name && (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT'));
+    if (!c) c = page0.findOne(n => n.name === name && (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT'));
+    if (!c) { out[name] = 'bulunamadi'; continue; }
+    const b = box(c);
+    out[name] = {
+      id: c.id,
+      type: c.type,
+      size: b ? b.w + 'x' + b.h : '-',
+      variants: c.type === 'COMPONENT_SET' ? c.children.map(v => v.name) : null,
+      firstVariantTree: c.type === 'COMPONENT_SET' ? tree(c.children[0], 0, 3) : tree(c, 0, 3)
+    };
   }
-  report.info['buton genislikleri'] = out;
+  report.info['componentler'] = out;
 });
 
 return report;
