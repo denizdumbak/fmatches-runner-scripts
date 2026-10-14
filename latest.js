@@ -1,16 +1,15 @@
-// step 80 · Social icon yon panosu: A yuvarlak / B markali kare / C orijinal app ikonlari
+// step 81 · A yonu uygulandi: Social icon 32x32 gercek daire, hover markanin renginde
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 
 const page = re => figma.root.children.find(p => re.test(p.name));
-const page0 = page(/^01/);
-if (page0) await page0.loadAsync();
+const page0 = page(/^01/), pageHome = page(/^02/);
+for (const p of [page0, pageHome]) { if (p) await p.loadAsync(); }
 
 const V = {};
 for (const [k, id] of Object.entries({
-  surface: '1:29', inverse: '1:31', textPrimary: '1:38', textSecondary: '1:39',
-  textInverse: '1:41', border: '1:48', rMd: '1:62', rFull: '1:64'
+  textInverse: '1:41', rFull: '1:64'
 })) V[k] = await figma.variables.getVariableByIdAsync('VariableID:' + id);
 
 const paint = k => figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: .5, g: .5, b: .5 } }, 'color', V[k]);
@@ -21,201 +20,135 @@ function hex(h) {
 }
 const solid = h => ({ type: 'SOLID', color: hex(h) });
 
-const TS = {}; for (const s of await figma.getLocalTextStylesAsync()) TS[s.name] = s.id;
-
-const fonts = await figma.listAvailableFontsAsync();
-const findFont = (family, styles) => {
-  for (const s of styles) if (fonts.some(f => f.fontName.family === family && f.fontName.style === s)) return { family, style: s };
-  return null;
+const BRAND = {
+  LinkedIn:  { color: '#0A66C2', invert: false },
+  Instagram: { color: '#E4405F', invert: false },
+  Facebook:  { color: '#0866FF', invert: false },
+  X:         { color: '#FFFFFF', invert: true }
 };
-const INTER_R = findFont('Inter', ['Regular']);
-const BARLOW_SB = findFont('Barlow Condensed', ['SemiBold', 'Semi Bold']) || INTER_R;
-for (const f of [INTER_R, BARLOW_SB]) if (f) await figma.loadFontAsync(f);
 
-async function T(chars, styleName, colorKey, font) {
-  const t = figma.createText();
-  t.fontName = font || INTER_R;
-  t.characters = chars;
-  if (TS[styleName]) await t.setTextStyleIdAsync(TS[styleName]);
-  t.fills = [paint(colorKey)];
-  t.name = chars.slice(0, 40);
-  t.textAutoResize = 'WIDTH_AND_HEIGHT';
-  return t;
-}
+const BOX = 32, GLYPH = 18;
 
-function frame(name, dir) {
-  const f = figma.createFrame();
-  f.name = name; f.fills = []; f.clipsContent = false;
-  if (dir) { f.layoutMode = dir; f.primaryAxisSizingMode = 'AUTO'; f.counterAxisSizingMode = 'AUTO'; }
-  return f;
-}
-
-function recolor(node, rgbPaint) {
+function recolor(node, p) {
   for (const v of node.findAll(x => x.type === 'VECTOR' || x.type === 'ELLIPSE' || x.type === 'RECTANGLE' || x.type === 'BOOLEAN_OPERATION')) {
-    if (v.fills && v.fills !== figma.mixed && v.fills.length) v.fills = [rgbPaint];
-    if (v.strokes && v.strokes.length) v.strokes = [rgbPaint];
+    if (v.fills && v.fills !== figma.mixed && v.fills.length) v.fills = [p];
+    if (v.strokes && v.strokes.length) v.strokes = [p];
   }
-  if (node.fills && node.fills !== figma.mixed && node.fills.length) node.fills = [rgbPaint];
-}
-
-const BRANDS = [
-  { key: 'LinkedIn', node: 'selfhst:linkedin', color: '#0A66C2', invertOnDark: false },
-  { key: 'Instagram', node: 'selfhst:instagram', color: '#E4405F', invertOnDark: false },
-  { key: 'Facebook', node: 'selfhst:facebook', color: '#0866FF', invertOnDark: false },
-  { key: 'X', node: 'selfhst:x', color: '#111613', invertOnDark: true }
-];
-
-// mevcut Social icon setinden tek renkli glyph'leri al
-const socialSet = page0.findOne(n => n.name === 'Social icon' && n.type === 'COMPONENT_SET');
-
-function glyphFor(brandKey) {
-  if (!socialSet) return null;
-  const v = socialSet.children.find(c => c.name.indexOf('Brand=' + brandKey) === 0 && /State=Default/.test(c.name));
-  if (!v) return null;
-  const g = v.findOne(n => n.name === 'Glyph');
-  if (!g) return null;
-  const c = g.clone();
-  return c;
-}
-
-function originalFor(nodeName) {
-  const n = page0.children.find(x => x.name === nodeName);
-  if (!n) return null;
-  return n.clone();
 }
 
 function fitTo(node, size) {
-  const h = node.height || size;
-  if (h && h !== size && typeof node.rescale === 'function') node.rescale(size / h);
+  const h = node.height;
+  if (h && Math.abs(h - size) > 0.5 && typeof node.rescale === 'function') node.rescale(size / h);
 }
 
-let board = null;
+const socialSet = page0.findOne(n => n.name === 'Social icon' && n.type === 'COMPONENT_SET');
 
-await step('Pano kuruldu', async () => {
-  const old = page0.children.find(n => n.name === 'Social icon · A / B / C');
-  if (old) { old.remove(); report.info['eski pano silindi'] = true; }
+await step('Social icon varyantlari 32x32 daire', async () => {
+  if (!socialSet) throw new Error('Social icon set bulunamadi');
+  const log = [];
+  for (const v of socialSet.children) {
+    const m = /Brand=([^,]+),\s*State=(\w+)/.exec(v.name);
+    if (!m) { report.errors.push('ad okunamadi: ' + v.name); continue; }
+    const brandKey = m[1].trim(), state = m[2].trim();
+    const info = BRAND[brandKey];
+    if (!info) { report.errors.push('bilinmeyen marka: ' + brandKey); continue; }
+    const hover = state === 'Hover';
 
-  board = frame('Social icon · A / B / C', 'VERTICAL');
-  board.itemSpacing = 56;
-  board.paddingLeft = 64; board.paddingRight = 64; board.paddingTop = 64; board.paddingBottom = 64;
-  board.fills = [paint('surface')];
-  page0.appendChild(board);
+    // kutu: kare 32x32, ortalanmis auto layout
+    v.layoutMode = 'HORIZONTAL';
+    v.primaryAxisAlignItems = 'CENTER';
+    v.counterAxisAlignItems = 'CENTER';
+    v.primaryAxisSizingMode = 'FIXED';
+    v.counterAxisSizingMode = 'FIXED';
+    v.paddingLeft = 0; v.paddingRight = 0; v.paddingTop = 0; v.paddingBottom = 0;
+    v.itemSpacing = 0;
+    v.clipsContent = false;
+    v.resize(BOX, BOX);
+    for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) v.setBoundVariable(c, V.rFull);
 
-  const title = await T('Social icon · three directions', 'Heading/H2', 'textPrimary', BARLOW_SB);
-  board.appendChild(title);
-  const sub = await T('All three shown on the dark footer surface, which is where they live. Containers are 32 px in every option.', 'Body/Default', 'textSecondary');
-  board.appendChild(sub);
-  report.info['pano id'] = board.id;
+    // zemin: default seffaf, hover markanin rengi
+    v.fills = hover ? [solid(info.color)] : [];
+    v.strokes = [];
+
+    // isaret: default beyaz; hover'da X ters, digerleri beyaz kalir
+    const g = v.findOne(n => n.name === 'Glyph');
+    if (!g) { report.errors.push('Glyph yok: ' + v.name); continue; }
+    g.layoutPositioning = 'AUTO';
+    fitTo(g, GLYPH);
+    if (hover && info.invert) recolor(g, solid('#111613'));
+    else recolor(g, paint('textInverse'));
+
+    log.push(v.name + ' -> ' + Math.round(v.width) + 'x' + Math.round(v.height));
+  }
+  report.info['varyantlar'] = log;
+
+  socialSet.description = 'Social link in the footer. Our container is a 32 px circle, transparent by default with the brand official single colour mark in white. On hover the circle fills with the brand own colour; X inverts because its colour is the footer colour. The container is ours, the mark and the colour are the brand own, never redrawn or retinted.';
 });
 
-// bir secenek bloğu: baslik + aciklama + koyu serit icinde 4 ikon
-async function optionBlock(label, note, builder) {
-  const block = frame(label, 'VERTICAL');
-  block.itemSpacing = 16;
-  board.appendChild(block);
-
-  const h = await T(label, 'Heading/H3', 'textPrimary', BARLOW_SB);
-  block.appendChild(h);
-  const n = await T(note, 'Body/Small', 'textSecondary');
-  block.appendChild(n);
-
-  const strip = frame('Footer surface', 'HORIZONTAL');
-  strip.counterAxisAlignItems = 'CENTER';
-  strip.itemSpacing = 12;
-  strip.paddingLeft = 32; strip.paddingRight = 32; strip.paddingTop = 24; strip.paddingBottom = 24;
-  strip.fills = [paint('inverse')];
-  block.appendChild(strip);
-
-  for (const b of BRANDS) {
-    const box = await builder(b);
-    if (box) strip.appendChild(box);
+// Footer'daki Social links siralarini yeni olcuye gore kontrol et
+await step('Footer Social links', async () => {
+  const out = [];
+  for (const p of [page0, pageHome]) {
+    if (!p) continue;
+    for (const f of p.findAll(n => n.name === 'Social links' && n.type === 'FRAME')) {
+      if (f.layoutMode === 'NONE') { f.layoutMode = 'HORIZONTAL'; }
+      f.counterAxisAlignItems = 'CENTER';
+      f.itemSpacing = 8;
+      f.primaryAxisSizingMode = 'AUTO';
+      f.counterAxisSizingMode = 'AUTO';
+      const b = f.absoluteBoundingBox;
+      out.push(p.name + ' / ' + (f.parent ? f.parent.name : '?') + ' -> ' + (b ? Math.round(b.width) + 'x' + Math.round(b.height) : '?') + ' (' + f.children.length + ' ikon)');
+    }
   }
-  return block;
+  report.info['Social links satirlari'] = out;
+});
+
+// karar verildi: A/B/C panosu silinir
+await step('Yon panosu silindi', async () => {
+  const b = page0.children.find(n => n.name === 'Social icon · A / B / C');
+  if (b) { b.remove(); report.info['pano'] = 'silindi'; }
+  else report.info['pano'] = 'zaten yok';
+});
+
+// Section duzenini onar
+function relayout(s) {
+  const kids = s.children.slice().sort((a, b) => {
+    const ba = a.absoluteBoundingBox, bb = b.absoluteBoundingBox;
+    if (!ba || !bb) return 0;
+    if (Math.abs(ba.y - bb.y) > 4) return ba.y - bb.y;
+    return ba.x - bb.x;
+  });
+  const left = s.x + 80; let y = s.y + 80, prevText = false, first = true;
+  for (const k of kids) {
+    const b = k.absoluteBoundingBox; if (!b) continue;
+    const isText = k.type === 'TEXT';
+    if (!first) y += (isText && prevText) ? 16 : 120;
+    k.x += left - b.x; k.y += y - b.y; y += b.height; prevText = isText; first = false;
+  }
+  let right = -Infinity, bottom = -Infinity;
+  for (const k of s.children) {
+    const b = k.absoluteBoundingBox; if (!b) continue;
+    if (b.x + b.width > right) right = b.x + b.width;
+    if (b.y + b.height > bottom) bottom = b.y + b.height;
+  }
+  s.resizeWithoutConstraints(Math.ceil(right - s.x + 80), Math.ceil(bottom - s.y + 80));
 }
 
-// A · bizim yuvarlak konteyner, tek renkli isaret
-await step('A · yuvarlak konteyner', async () => {
-  await optionBlock(
-    'A · House container, official single colour mark',
-    'Our container: a true 32 px circle, transparent by default. The mark is the brand official single path, white on the dark footer. On hover the circle fills with the brand colour. This is what Stripe and Revolut footers do.',
-    async (b) => {
-      const box = frame('Social · ' + b.key, 'HORIZONTAL');
-      box.counterAxisAlignItems = 'CENTER';
-      box.primaryAxisAlignItems = 'CENTER';
-      box.primaryAxisSizingMode = 'FIXED';
-      box.counterAxisSizingMode = 'FIXED';
-      box.resize(32, 32);
-      box.fills = [];
-      box.strokes = [];
-      for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) box.setBoundVariable(c, V.rFull);
-      const g = glyphFor(b.key);
-      if (g) { box.appendChild(g); fitTo(g, 18); recolor(g, paint('textInverse')); }
-      return box;
-    }
-  );
-});
+await step('Section duzeni', async () => {
+  const section = page0.findOne(n => n.type === 'SECTION' && /Navigation/.test(n.name));
+  if (!section) throw new Error('Navigation Section bulunamadi');
+  relayout(section);
+  report.info['Section'] = Math.round(section.width) + 'x' + Math.round(section.height);
 
-// B · yuvarlak koseli kare, markanin rengi dolu, beyaz isaret
-await step('B · markali kare', async () => {
-  await optionBlock(
-    'B · House square, brand colour fill, white mark',
-    'One shape for all four: a 32 px rounded square, radius 8. The fill is the brand own colour, the mark sits on it in white. The square and the radius are ours, the colour and the mark are theirs, so no app icon is copied. X inverts, because its colour is the footer colour.',
-    async (b) => {
-      const box = frame('Social · ' + b.key, 'HORIZONTAL');
-      box.counterAxisAlignItems = 'CENTER';
-      box.primaryAxisAlignItems = 'CENTER';
-      box.primaryAxisSizingMode = 'FIXED';
-      box.counterAxisSizingMode = 'FIXED';
-      box.resize(32, 32);
-      box.fills = [solid(b.invertOnDark ? '#FFFFFF' : b.color)];
-      for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) box.setBoundVariable(c, V.rMd);
-      const g = glyphFor(b.key);
-      if (g) { box.appendChild(g); fitTo(g, 17); recolor(g, b.invertOnDark ? solid('#111613') : solid('#FFFFFF')); }
-      return box;
-    }
-  );
-});
-
-// C · markalarin gercek app ikonlari, oldugu gibi
-await step('C · orijinal app ikonlari', async () => {
-  await optionBlock(
-    'C · The brands own icons, untouched',
-    'The files as dropped in, scaled to 32 px and nothing else changed. Instagram brings its gradient square, LinkedIn a blue square, Facebook a circle, X only a bare mark with no container at all. Four different shapes sitting next to each other.',
-    async (b) => {
-      const box = frame('Social · ' + b.key, 'HORIZONTAL');
-      box.counterAxisAlignItems = 'CENTER';
-      box.primaryAxisAlignItems = 'CENTER';
-      box.primaryAxisSizingMode = 'FIXED';
-      box.counterAxisSizingMode = 'FIXED';
-      box.resize(32, 32);
-      box.fills = [];
-      const o = originalFor(b.node);
-      if (o) { box.appendChild(o); fitTo(o, 32); }
-      else report.errors.push('bulunamadi: ' + b.node);
-      return box;
-    }
-  );
-});
-
-// panoyu sagda bos alana koy
-await step('Pano yerlesimi', async () => {
-  if (!board) throw new Error('pano yok');
-  let right = 0;
-  for (const n of page0.children) {
-    if (n === board) continue;
-    const b = n.absoluteBoundingBox;
-    if (b && b.x + b.width > right) right = b.x + b.width;
+  const secs = page0.children.filter(n => n.type === 'SECTION');
+  const hits = [];
+  for (let i = 0; i < secs.length; i++) for (let j = i + 1; j < secs.length; j++) {
+    const a = secs[i].absoluteBoundingBox, b = secs[j].absoluteBoundingBox;
+    if (!a || !b) continue;
+    if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height)
+      hits.push(secs[i].name + ' <-> ' + secs[j].name);
   }
-  board.x = right + 200;
-  board.y = 0;
-  report.info['pano konumu'] = Math.round(board.x) + ',' + Math.round(board.y);
-  report.info['pano boyutu'] = Math.round(board.width) + 'x' + Math.round(board.height);
-});
-
-await step('Mevcut Social icon olcusu', async () => {
-  if (!socialSet) { report.info['Social icon'] = 'bulunamadi'; return; }
-  const f = socialSet.children[0];
-  report.info['mevcut Social icon kutusu'] = Math.round(f.width) + 'x' + Math.round(f.height) + ' (kare olmadigi icin radius 999 daire degil hap uretiyor)';
+  report.info['Section cakismasi'] = hits.length ? hits : 'yok';
 });
 
 return report;
