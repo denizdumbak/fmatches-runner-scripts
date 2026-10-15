@@ -1,4 +1,4 @@
-// step 108 · M3: hero B (tam ekran) component'e · slayt 1 Gemini genis stadyum (yalniz web) · mobil tam ekran dikey fotograf · A/B panosu silinir
+// step 109 · M3: 108 + slayt 2 basin tribunu (laptop ekraninda fmatches oyuncu aramasi, ayri kart yok)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -57,14 +57,16 @@ await step('hero B desktop', async () => {
     for (const c of hv.children) if (/watermark|cut-out|Pitch lines|Preview · Message/.test(c.name)) c.visible = false;
     const ph = ensureRect(hv, 'Scene photo', 0);
     ph.x = 0; ph.y = 0; ph.resize(1440, 680); R0(ph);
-    ph.fills = [IMG(await loadImg(k === 1 ? 'hero-b-1g.jpg' : 'hero-b-' + k + '.jpg'))];
+    ph.fills = [IMG(await loadImg({ 1: 'hero-b-1g.jpg', 2: 'hero-b-2p.jpg', 3: 'hero-b-3.jpg' }[k]))];
     const sh = ensureRect(hv, 'Shade', 1);
     sh.x = 0; sh.y = 0; sh.resize(1440, 680);
     sh.fills = [{ type: 'GRADIENT_LINEAR', gradientTransform: [[1, 0, 0], [0, 1, 0]],
-      gradientStops: [{ position: 0, color: C(0.9) }, { position: 0.42, color: C(0.7) }, { position: 0.7, color: C(0) }] }];
+      gradientStops: k === 2
+        ? [{ position: 0, color: C(0.9) }, { position: 0.36, color: C(0.75) }, { position: 0.5, color: C(0.2) }, { position: 0.6, color: C(0) }]
+        : [{ position: 0, color: C(0.9) }, { position: 0.42, color: C(0.7) }, { position: 0.7, color: C(0) }] }];
     const panel = hv.children.find(c => c.name === 'Scene panel'); if (panel) panel.remove();
     const card = hv.children.find(c => CARD_RE.test(c.name));
-    card.visible = true;
+    card.visible = k !== 2; // slayt 2: urun laptop ekraninda
     card.x = 1440 - 80 - card.width; card.y = k === 1 ? 80 : 680 - 80 - card.height;
     hv.appendChild(card); // card on top
     if (ES['Shadow/Raised']) await card.setEffectStyleIdAsync(ES['Shadow/Raised'].id);
@@ -82,7 +84,7 @@ await step('hero mobile full-bleed', async () => {
     const st = hv.findOne(n => n.name === 'Stage'); if (st) st.visible = false;
     const ph = ensureRect(hv, 'Scene photo', 0);
     ph.x = 0; ph.y = 0; ph.resize(hv.width, hv.height); R0(ph);
-    ph.fills = [IMG(await loadImg('hero-mf-' + k + '.jpg'))];
+    ph.fills = [IMG(await loadImg('hero-mf-' + k + (k === 2 ? 'p' : '') + '.jpg'))];
     const sh = ensureRect(hv, 'Shade', 1);
     sh.x = 0; sh.y = 0; sh.resize(hv.width, hv.height);
     sh.fills = [{ type: 'GRADIENT_LINEAR', gradientTransform: [[0, 1, 0], [-1, 0, 1]],
