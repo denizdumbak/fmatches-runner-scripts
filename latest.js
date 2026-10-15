@@ -1,4 +1,4 @@
-// step 102 · Logo yesil (Sergey #009933, yeni degisken color/logo/brand), footer beyaz kalir · Start here (02) satir 1-2 guncel + satir 5: giris yapmis header nerede
+// step 103 · Footer: sloganli logo (yeni component "Logo · slogan", Sergey'in resmi SVG'si), beyaz · masaustu 96, mobil 80 yukseklik
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -8,82 +8,79 @@ for (const p of [page0, pageHome, pageProf]) if (p) await p.loadAsync();
 const allVars = await figma.variables.getLocalVariablesAsync();
 const pick = (...pats) => { for (const p of pats) { const h = allVars.find(v => new RegExp(p, 'i').test(v.name)); if (h) return h; } return null; };
 const P = v => figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: .5, g: .5, b: .5 } }, 'color', v);
-const vTextPrimary = pick('color/text/primary$', 'text/primary$');
-const vTextInverse = pick('color/text/inverse$', 'text/inverse$');
-const boundId = node => { const f = node && node.fills; if (!f || f === figma.mixed || !f[0] || !f[0].boundVariables || !f[0].boundVariables.color) return null; return f[0].boundVariables.color.id; };
-let vLogo = null;
+const vLogo = pick('color/logo/brand$');
+const vInverse = pick('color/text/inverse$', 'text/inverse$');
+const SVG = "<svg width=\"53.43\" height=\"41.426\" version=\"1.1\" viewBox=\"0 0 53.43 41.426\" xmlns=\"http://www.w3.org/2000/svg\"> <g transform=\"translate(-78.317 -127.79)\" fill-rule=\"evenodd\" stroke-width=\".35278\"> <path d=\"m111.08 142.53-1e-3 7e-4 -0.13931-0.0704-8.437-4.8728v-9.7982l8.5778 5.0682 8.5779-5.0682v9.7982l-8.437 4.8728-0.13931 0.0704zm20.669-4.9424h-9.6732v-9.6732h9.6732zm0 24.183h-9.6732v-21.765h9.6732zm-25.504 0c2.6711 0 4.8366-2.1654 4.8366-4.8365 0-2.6712-2.1655-4.8366-4.8366-4.8366-2.6712 0-4.8366 2.1654-4.8366 4.8366 0 2.6711 2.1654 4.8365 4.8366 4.8365zm-27.926-33.856h21.765v9.6732h-12.092v24.183h-9.6732v-33.856zm12.092 12.091h9.6732v9.6732h-9.6732z\"/> <path d=\"m78.317 165.81h1.6699v0.3247h-1.3359v1.0436h1.3359v0.3247h-1.3359v1.6374h-0.33401zm3.8369-0.0835c0.50398 0 0.92608 0.16849 1.2655 0.50479s0.50952 0.75071 0.50952 1.2423c0 0.48779-0.1693 0.90139-0.508 1.2408-0.3393 0.33941-0.75219 0.50952-1.24 0.50952-0.49318 0-0.90988-0.16933-1.2493-0.50712-0.33941-0.33789-0.50941-0.74679-0.50941-1.2269 0-0.32011 0.07729-0.61619 0.23192-0.88991 0.15459-0.27288 0.36558-0.48698 0.63309-0.6416 0.2667-0.15459 0.55591-0.23188 0.8667-0.23188zm0.01471 0.3247c-0.24592 0-0.47942 0.0641-0.70051 0.19247-0.22031 0.12831-0.39271 0.30071-0.51721 0.51791-0.12361 0.21802-0.18549 0.45999-0.18549 0.7275 0 0.39501 0.13681 0.72902 0.4113 1.0011 0.27439 0.27288 0.6053 0.40898 0.9919 0.40898 0.25887 0 0.49777-0.0626 0.71737-0.18789 0.22031-0.1252 0.3919-0.29679 0.51481-0.5141 0.12301-0.21721 0.18478-0.4584 0.18478-0.72429 0-0.26441-0.06177-0.50331-0.18478-0.7167-0.12291-0.2134-0.29679-0.38421-0.5202-0.51252-0.22348-0.12837-0.4608-0.19247-0.71198-0.19247zm4.0169-0.3247c0.50401 0 0.92611 0.16849 1.2655 0.50479s0.50948 0.75071 0.50948 1.2423c0 0.48779-0.1693 0.90139-0.508 1.2408-0.3393 0.33941-0.75219 0.50952-1.24 0.50952-0.49322 0-0.90992-0.16933-1.2493-0.50712-0.33941-0.33789-0.50941-0.74679-0.50941-1.2269 0-0.32011 0.07729-0.61619 0.23188-0.88991 0.15462-0.27288 0.36562-0.48698 0.63313-0.6416 0.2667-0.15459 0.55587-0.23188 0.86667-0.23188zm0.01471 0.3247c-0.24589 0-0.47939 0.0641-0.70051 0.19247-0.22027 0.12831-0.39268 0.30071-0.51717 0.51791-0.12361 0.21802-0.18553 0.45999-0.18553 0.7275 0 0.39501 0.13681 0.72902 0.4113 1.0011 0.27443 0.27288 0.6053 0.40898 0.9919 0.40898 0.2589 0 0.4978-0.0626 0.71741-0.18789 0.22031-0.1252 0.3919-0.29679 0.51481-0.5141 0.12298-0.21721 0.18478-0.4584 0.18478-0.72429 0-0.26441-0.06181-0.50331-0.18478-0.7167-0.12291-0.2134-0.29683-0.38421-0.5202-0.51252-0.22352-0.12837-0.4608-0.19247-0.71201-0.19247zm2.0996 0.0835v-0.3247h1.8229v0.3247h-0.7421v3.0057h-0.3386v-3.0057zm2.3138-0.3247h0.65641c0.26441 0 0.46771 0.0309 0.60921 0.0935 0.14217 0.0626 0.25428 0.15931 0.3363 0.2891 0.08269 0.12908 0.12358 0.27368 0.12358 0.43141 0 0.14838-0.0363 0.283-0.1082 0.40428-0.0719 0.12139-0.1778 0.21961-0.3169 0.29542 0.17311 0.0587 0.3061 0.12749 0.39888 0.20708 0.09352 0.0789 0.16542 0.1748 0.2172 0.28762 0.05182 0.11208 0.0781 0.23428 0.0781 0.36569 0 0.26751-0.0974 0.49399-0.29298 0.67878-0.19562 0.18471-0.45773 0.27753-0.78701 0.27753h-0.91461zm0.3247 0.3247v1.0668h0.19103c0.23188 0 0.4027-0.0216 0.51177-0.0642 0.10901-0.0433 0.19551-0.1113 0.2589-0.20412 0.06421-0.0927 0.09592-0.19628 0.09592-0.30917 0-0.15233-0.0533-0.2721-0.16002-0.35951-0.10749-0.0866-0.2776-0.12979-0.511-0.12979zm0 1.4008v1.2802h0.41363c0.24349 0 0.4221-0.024 0.5358-0.0711 0.1136-0.0479 0.20479-0.12291 0.27358-0.22419 0.06879-0.10132 0.10361-0.2111 0.10361-0.32861 0-0.14838-0.04872-0.27831-0.14531-0.3888-0.09659-0.10978-0.22959-0.18559-0.39888-0.22648-0.1137-0.0271-0.31161-0.041-0.59372-0.041zm3.6931-1.7255 1.5539 3.3304h-0.358l-0.52028-1.0947h-1.4433l-0.51721 1.0947h-0.37109l1.5725-3.3304zm-0.0418 0.69878-0.5728 1.2122h1.1434zm2.1089-0.69878h0.33397v3.0057h1.2849v0.3247h-1.6189zm2.1422 0h0.33401v3.0057h1.2849v0.3247h-1.6189zm2.4391 2.8294c0.0773 0 0.14231 0.0271 0.19709 0.0812 0.0542 0.0549 0.0812 0.12058 0.0812 0.1995 0 0.0773-0.027 0.14298-0.0812 0.1979-0.0548 0.0549-0.1198 0.0827-0.19709 0.0827-0.0765 0-0.14221-0.0278-0.1971-0.0827-0.0541-0.0549-0.0812-0.12061-0.0812-0.1979 0-0.0789 0.0271-0.14461 0.0812-0.1995 0.0549-0.0541 0.12061-0.0812 0.1971-0.0812zm5.3745-2.2148-0.26279 0.20171c-0.1446-0.18859-0.31859-0.33161-0.5219-0.42901-0.20249-0.0974-0.4252-0.14608-0.66868-0.14608-0.26522 0-0.511 0.0641-0.73752 0.1917-0.22648 0.12749-0.40121 0.29919-0.52571 0.5141-0.12449 0.21487-0.18708 0.45758-0.18708 0.72587 0 0.40672 0.13921 0.74602 0.41748 1.0174 0.27831 0.2721 0.62932 0.4082 1.0537 0.4082 0.46619 0 0.8558-0.18249 1.1697-0.5474l0.26279 0.19949c-0.1662 0.211-0.37338 0.3749-0.6216 0.49011-0.2481 0.11519-0.5256 0.17322-0.83177 0.17322-0.58293 0-1.0429-0.19414-1.3792-0.58212-0.28208-0.32709-0.42358-0.72291-0.42358-1.1859 0-0.48711 0.17078-0.8976 0.51248-1.23 0.34251-0.3332 0.77082-0.49939 1.2857-0.49939 0.3108 0 0.5914 0.061 0.84191 0.1832 0.2504 0.12287 0.4561 0.2945 0.61609 0.51488zm2.2559-0.69808c0.50401 0 0.92611 0.16849 1.2655 0.50479 0.33937 0.3363 0.50948 0.75071 0.50948 1.2423 0 0.48779-0.1693 0.90139-0.508 1.2408-0.3393 0.33941-0.75219 0.50952-1.24 0.50952-0.49318 0-0.90988-0.16933-1.2493-0.50712-0.33941-0.33789-0.50938-0.74679-0.50938-1.2269 0-0.32011 0.0773-0.61619 0.23188-0.88991 0.15459-0.27288 0.36562-0.48698 0.6331-0.6416 0.2667-0.15459 0.5559-0.23188 0.8667-0.23188zm0.0147 0.3247c-0.24592 0-0.47939 0.0641-0.70051 0.19247-0.22031 0.12831-0.39271 0.30071-0.5172 0.51791-0.12358 0.21802-0.18549 0.45999-0.18549 0.7275 0 0.39501 0.1368 0.72902 0.4113 1.0011 0.27439 0.27288 0.60529 0.40898 0.9919 0.40898 0.25891 0 0.49781-0.0626 0.71741-0.18789 0.22027-0.1252 0.3919-0.29679 0.51477-0.5141 0.12302-0.21721 0.18482-0.4584 0.18482-0.72429 0-0.26441-0.0618-0.50331-0.18482-0.7167-0.12287-0.2134-0.29679-0.38421-0.5202-0.51252-0.22349-0.12837-0.4608-0.19247-0.71198-0.19247zm2.4336 3.0892v-3.3304h0.0719l2.2149 2.5473v-2.5473h0.33391v3.3304h-0.0757l-2.2018-2.5249v2.5249zm3.4309 0v-3.3304h0.0719l2.2149 2.5473v-2.5473h0.33391v3.3304h-0.0757l-2.2018-2.5249v2.5249zm3.4309-3.3304h1.9064v0.3247h-1.5724v1.0436h1.5585v0.3247h-1.5585v1.3127h1.5585v0.3247h-1.8925zm5.5855 0.61458-0.26282 0.20171c-0.14461-0.18859-0.3186-0.33161-0.5219-0.42901-0.2025-0.0974-0.4252-0.14608-0.66869-0.14608-0.26522 0-0.511 0.0641-0.73752 0.1917-0.22648 0.12749-0.40118 0.29919-0.52567 0.5141-0.12453 0.21487-0.18711 0.45758-0.18711 0.72587 0 0.40672 0.1392 0.74602 0.41751 1.0174 0.27827 0.2721 0.62928 0.4082 1.0537 0.4082 0.4662 0 0.85581-0.18249 1.1697-0.5474l0.26282 0.19949c-0.16623 0.211-0.37342 0.3749-0.62163 0.49011-0.24808 0.11519-0.52557 0.17322-0.83178 0.17322-0.5829 0-1.0429-0.19414-1.3792-0.58212-0.28208-0.32709-0.42358-0.72291-0.42358-1.1859 0-0.48711 0.17078-0.8976 0.51248-1.23 0.34251-0.3332 0.77082-0.49939 1.2857-0.49939 0.31083 0 0.59143 0.061 0.8419 0.1832 0.2504 0.12287 0.45611 0.2945 0.61613 0.51488zm0.33859-0.28988v-0.3247h1.8229v0.3247h-0.74207v3.0057h-0.33863v-3.0057zm2.3092-0.3247h1.9064v0.3247h-1.5724v1.0436h1.5585v0.3247h-1.5585v1.3127h1.5585v0.3247h-1.8925zm2.4823 3.3304v-3.3304h0.6912c0.49791 0 0.85968 0.0402 1.0846 0.11977 0.32321 0.11363 0.57601 0.30921 0.75762 0.5891 0.18168 0.27912 0.27287 0.61151 0.27287 0.99801 0 0.33401-0.0719 0.62699-0.21639 0.8806-0.14379 0.25351-0.33168 0.4414-0.5613 0.56201-0.2304 0.12058-0.55348 0.18091-0.96869 0.18091zm0.32008-0.31542h0.38421c0.45921 0 0.77699-0.0286 0.95479-0.0858 0.24969-0.082 0.44683-0.2281 0.58981-0.43991 0.14308-0.21258 0.2142-0.47159 0.2142-0.7777 0-0.32088-0.0773-0.59609-0.23269-0.82338-0.15462-0.228-0.37112-0.38421-0.6478-0.46849-0.208-0.0634-0.55051-0.095-1.0275-0.095h-0.23502z\"/> </g> </svg>";
+const RATIO = 53.43 / 41.426;
+const HD = 96, HM = 80;
+const navSec = page0.findOne(n => n.type === 'SECTION' && /Navigation/.test(n.name));
+let lock = null;
 
-await step('1 variable color/logo/brand', async () => {
-  vLogo = allVars.find(v => v.name === 'color/logo/brand');
-  if (!vLogo) {
-    const colls = await figma.variables.getLocalVariableCollectionsAsync();
-    const coll = colls.find(c => /^Color$/i.test(c.name)) || colls.find(c => c.id === vTextPrimary.variableCollectionId);
-    vLogo = figma.variables.createVariable('color/logo/brand', coll, 'COLOR');
-    for (const m of coll.modes) vLogo.setValueForMode(m.modeId, { r: 0, g: 0x99 / 255, b: 0x33 / 255, a: 1 });
-    vLogo.description = 'Logo green from the official FMI SVG (#009933). Logo only; buttons and text use bg/brand and text/brand.';
-  }
-  vLogo.scopes = ['SHAPE_FILL'];
+await step('1 component Logo · slogan', async () => {
+  if (!vLogo || !vInverse) throw new Error('variables missing');
+  lock = page0.findOne(n => n.type === 'COMPONENT' && n.name === 'Logo · slogan');
+  if (lock) return;
+  const frame = figma.createNodeFromSvg(SVG);
+  const vecs = frame.findAll(n => n.type === 'VECTOR');
+  const flat = figma.flatten(vecs, frame);
+  flat.name = 'FMI mark + slogan';
+  lock = figma.createComponent();
+  lock.name = 'Logo · slogan';
+  lock.fills = [];
+  lock.clipsContent = false;
+  lock.resize(Math.round(HD * RATIO * 100) / 100, HD);
+  lock.appendChild(flat);
+  flat.resize(lock.width, lock.height); flat.x = 0; flat.y = 0;
+  flat.constraints = { horizontal: 'SCALE', vertical: 'SCALE' };
+  flat.fills = [P(vLogo)];
+  frame.remove();
+  lock.description = 'Full FMI lockup with "football.connected". Footer only (the slogan is unreadable below ~80 px height). On dark surfaces override the fill to text/inverse.';
+  navSec.appendChild(lock);
+  const logo = page0.findOne(n => n.type === 'COMPONENT' && n.name === 'Logo');
+  if (logo) { lock.x = logo.x + logo.width + 80; lock.y = logo.y; }
 });
 
-await step('2 Logo component green', async () => {
-  const comp = page0.findOne(n => n.name === 'Logo' && n.type === 'COMPONENT');
-  if (!comp) throw new Error('Logo component not found');
-  const vecs = comp.findAll(n => n.type === 'VECTOR' || n.type === 'BOOLEAN_OPERATION');
-  for (const v of vecs) v.fills = [P(vLogo)];
-  report.info.componentVectors = vecs.length;
-  const d = comp.description || '';
-  if (!/green/i.test(d)) comp.description = 'FMI mark, green (color/logo/brand). On dark surfaces (footer) override the fill to text/inverse.' + (d ? ' ' + d : '');
-});
-
-await step('3 instances: dark text -> green, white kept', async () => {
-  let green = 0, white = 0, other = 0;
-  for (const p of [page0, pageHome, pageProf]) {
-    for (const n of p.findAllWithCriteria({ types: ['INSTANCE'] })) {
-      const m = await n.getMainComponentAsync();
-      if (!m || m.name !== 'Logo' || m.type !== 'COMPONENT') continue;
-      const vecs = n.findAll(x => x.type === 'VECTOR' || x.type === 'BOOLEAN_OPERATION');
-      let isWhite = false;
-      for (const v of vecs) { const id = boundId(v); if (vTextInverse && id === vTextInverse.id) isWhite = true; }
-      if (isWhite) { white++; continue; }
-      for (const v of vecs) { const id = boundId(v); if (id !== vLogo.id) v.fills = [P(vLogo)]; }
-      green++;
+await step('2 Footer: swap logo, white, size', async () => {
+  const footer = page0.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Footer');
+  if (!footer) throw new Error('Footer not found');
+  const out = [];
+  for (const variant of footer.children) {
+    const insts = variant.findAll(n => n.type === 'INSTANCE');
+    for (const i of insts) {
+      const m = await i.getMainComponentAsync();
+      if (!m || !(m.name === 'Logo' || m.name === 'Logo · slogan')) continue;
+      const mobile = /Mobile/i.test(variant.name) || variant.width < 600;
+      const h = mobile ? HM : HD;
+      if (m.id !== lock.id) i.swapComponent(lock);
+      i.resize(Math.round(h * RATIO * 100) / 100, h);
+      for (const v of i.findAll(n => n.type === 'VECTOR')) v.fills = [P(vInverse)];
+      out.push(variant.name + ': ' + Math.round(i.width) + 'x' + Math.round(i.height) + ', footer ' + Math.round(variant.width) + 'x' + Math.round(variant.height));
     }
   }
-  report.info.instances = { green: green, whiteKept: white, other: other };
+  report.info.footer = out;
 });
 
-await step('4 Start here (02) lines', async () => {
-  const card = pageHome.children.find(n => /^Start here/.test(n.name));
-  if (!card) throw new Error('Start here card not found');
-  const texts = card.findAll(n => n.type === 'TEXT');
-  const byText = re => texts.find(t => re.test(t.characters));
-  const load = async t => { for (const f of t.getRangeAllFontNames(0, t.characters.length)) await figma.loadFontAsync(f); };
-  const setKeepPrefix = async (t, body) => {
-    await load(t);
-    const m = t.characters.match(/^(\s*\d+\.\s*)/);
-    t.characters = (m ? m[1] : '') + body;
-  };
-
-  const l1 = byText(/Left to right/);
-  if (l1) await setKeepPrefix(l1, 'Left to right: desktop (1440) and its calendar view, mobile (390) and its calendar view, then hero slides 2 and 3.');
-  const l2 = byText(/to try it/);
-  if (l2 && !/Calendar switch/.test(l2.characters)) { await load(l2); l2.characters = l2.characters.replace(/\s*$/, '') + ' The List / Calendar switch in Upcoming events opens the calendar view.'; }
-
-  const l4 = byText(/Styles and components are on page 01/);
-  if (!l4) throw new Error('line 4 not found');
-  if (!byText(/account states/)) {
-    const body = 'Logged-in header and account menu: page 01, section 1 · Navigation, board "Header · account states". Press ▶ on "Try it · account menu closed" to open the menu.';
-    const hasNum = /^\s*4\./.test(l4.characters);
-    if (hasNum) {
-      const c = l4.clone(); l4.parent.insertChild(l4.parent.children.indexOf(l4) + 1, c);
-      await load(c); const m = c.characters.match(/^(\s*)4(\.\s*)/);
-      c.characters = m[1] + '5' + m[2] + body;
-    } else {
-      const row = l4.parent; const c = row.clone(); row.parent.insertChild(row.parent.children.indexOf(row) + 1, c);
-      for (const t of c.findAll(n => n.type === 'TEXT')) { await load(t); if (/^\s*4\.?\s*$/.test(t.characters)) t.characters = t.characters.replace('4', '5'); else if (/Styles and components/.test(t.characters)) t.characters = body; }
-    }
+await step('3 relayout Navigation section', async () => {
+  const s = navSec;
+  const kids = s.children.slice();
+  const ordered = kids.filter(n => n.type === 'TEXT').concat(kids.filter(n => n.type !== 'TEXT'));
+  const left = s.x + 80; let y = s.y + 80, prevText = false, first = true;
+  for (const k of ordered) {
+    const b = k.absoluteBoundingBox; if (!b) continue; const isText = k.type === 'TEXT';
+    if (!first) y += (isText && prevText) ? 16 : 120;
+    k.x += left - b.x; k.y += y - b.y; y += b.height; prevText = isText; first = false;
   }
-  report.info.startHere = card.findAll(n => n.type === 'TEXT').map(t => t.characters.slice(0, 60));
+  let right = -Infinity, bottom = -Infinity;
+  for (const k of s.children) { const b = k.absoluteBoundingBox; if (!b) continue;
+    if (b.x + b.width > right) right = b.x + b.width;
+    if (b.y + b.height > bottom) bottom = b.y + b.height; }
+  s.resizeWithoutConstraints(Math.ceil(right - s.x + 80), Math.ceil(bottom - s.y + 80));
+});
+
+await step('4 page frames height', async () => {
+  const hs = [];
+  for (const p of [pageHome, pageProf]) for (const f of p.children) if (f.type === 'FRAME' && /Desktop|Mobile/.test(f.name)) hs.push(f.name + ' ' + Math.round(f.height));
+  report.info.frames = hs;
 });
 
 return report;
