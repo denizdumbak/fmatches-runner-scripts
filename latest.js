@@ -1,4 +1,4 @@
-// step 106 · M3 (105 + slayt 1 yeni stadyum fotografi): hero A (cerceveli sahne + tek kart) component'e, rol kartlarina fotograf; B (tam ekran sahne) karsilastirma panosu sekme 02'de
+// step 107 · M3: hero B (tam ekran sahne) component'e · slayt 1 bulanik zemin + dikey pano (fotografin tamami) · mobil koyu hero · A/B panosu silinir
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -9,135 +9,103 @@ const allVars = await figma.variables.getLocalVariablesAsync();
 const pick = (...pats) => { for (const p of pats) { const h = allVars.find(v => new RegExp(p, 'i').test(v.name)); if (h) return h; } return null; };
 const P = v => figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: .5, g: .5, b: .5 } }, 'color', v);
 const R = (n, v) => { for (const c of ['topLeftRadius','topRightRadius','bottomLeftRadius','bottomRightRadius']) n.setBoundVariable(c, v); };
+const R0 = n => { for (const c of ['topLeftRadius','topRightRadius','bottomLeftRadius','bottomRightRadius']) { n.setBoundVariable(c, null); n[c] = 0; } };
 const TS = {}; for (const s of await figma.getLocalTextStylesAsync()) TS[s.name] = s;
 const ES = {}; for (const s of await figma.getLocalEffectStylesAsync()) ES[s.name] = s;
 const V = {
   inverse: pick('color/bg/inverse$'), tInv: pick('color/text/inverse$'), tInv2: pick('color/text/inverse-secondary$'),
-  bInv: pick('color/border/inverse$'), rLg: pick('radius/lg$'), rMd: pick('radius/md$')
+  bInv: pick('color/border/inverse$'), rLg: pick('radius/lg$')
 };
-
 const BASE = 'https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/m3/';
 const H = {};
 async function loadImg(n) { if (!H[n]) H[n] = (await figma.createImageAsync(BASE + n)).hash; return H[n]; }
 const IMG = hash => ({ type: 'IMAGE', scaleMode: 'FILL', imageHash: hash });
-
 async function resolveColor(v) {
-  let val = v.valuesByMode[Object.keys(v.valuesByMode)[0]];
-  let guard = 0;
-  while (val && val.type === 'VARIABLE_ALIAS' && guard++ < 5) { const t = await figma.variables.getVariableByIdAsync(val.id); val = t.valuesByMode[Object.keys(t.valuesByMode)[0]]; }
+  let val = v.valuesByMode[Object.keys(v.valuesByMode)[0]]; let g = 0;
+  while (val && val.type === 'VARIABLE_ALIAS' && g++ < 5) { const t = await figma.variables.getVariableByIdAsync(val.id); val = t.valuesByMode[Object.keys(t.valuesByMode)[0]]; }
   return val;
 }
 const inv = await resolveColor(V.inverse);
-
+const C = a => ({ r: inv.r, g: inv.g, b: inv.b, a });
 const heroSet = page0.findOne(n => n.name === 'Hero slide' && n.type === 'COMPONENT_SET');
-const roleSet = page0.findOne(n => n.name === 'Role card' && n.type === 'COMPONENT_SET');
-const variant = (set, re) => set.children.find(c => re.test(c.name));
-
-// ---------- A: desktop hero variants ----------
+const variant = re => heroSet.children.find(c => re.test(c.name));
 const CARD_RE = /^Preview · (Player card|Booking)$/;
-await step('hero A desktop', async () => {
+
+function ensureRect(parent, name, index) {
+  let r = parent.children.find(c => c.name === name);
+  if (!r) { r = figma.createRectangle(); r.name = name; parent.insertChild(index, r); }
+  else if (parent.children.indexOf(r) !== index) parent.insertChild(index, r);
+  return r;
+}
+function darkCopy(root) {
+  const copy = root.findOne(n => n.name === 'Copy');
+  for (const t of copy.children.filter(n => n.type === 'TEXT')) t.fills = [P(t.name === 'Eyebrow' ? V.tInv2 : V.tInv)];
+  const tabs = root.findOne(n => n.name === 'Hero tabs');
+  for (const tab of tabs.children) {
+    const active = /active/.test(tab.name);
+    const bar = tab.findOne(n => n.name === 'Bar'); if (bar && !active) bar.fills = [P(V.bInv)];
+    for (const t of tab.findAll(n => n.type === 'TEXT')) t.fills = [P(/^0\d$/.test(t.characters) ? V.tInv2 : V.tInv)];
+  }
+}
+
+// ---------- desktop: full-bleed ----------
+await step('hero B desktop', async () => {
   for (const k of [1, 2, 3]) {
-    const comp = variant(heroSet, new RegExp('Slide=' + k + ', Device=Desktop'));
+    const comp = variant(new RegExp('Slide=' + k + ', Device=Desktop'));
+    const bg = comp.children.find(c => c.name === 'Background'); if (bg) bg.fills = [P(V.inverse)];
     const hv = comp.findOne(n => n.name === 'Hero visual');
     for (const c of hv.children) if (/watermark|cut-out|Pitch lines|Preview · Message/.test(c.name)) c.visible = false;
-    let ph = hv.children.find(c => c.name === 'Scene photo');
-    if (!ph) { ph = figma.createRectangle(); ph.name = 'Scene photo'; hv.insertChild(0, ph); }
-    ph.resize(592, 552); ph.x = 768; ph.y = 64; R(ph, V.rLg);
-    ph.fills = [IMG(await loadImg('hero-a-' + k + (k === 1 ? 's' : '') + '.jpg'))];
+    const ph = ensureRect(hv, 'Scene photo', 0);
+    ph.x = 0; ph.y = 0; ph.resize(1440, 680); R0(ph);
+    ph.fills = [IMG(await loadImg(k === 1 ? 'hero-b-1bg.jpg' : 'hero-b-' + k + '.jpg'))];
+    const sh = ensureRect(hv, 'Shade', 1);
+    sh.x = 0; sh.y = 0; sh.resize(1440, 680);
+    sh.fills = [{ type: 'GRADIENT_LINEAR', gradientTransform: [[1, 0, 0], [0, 1, 0]],
+      gradientStops: [{ position: 0, color: C(0.9) }, { position: 0.42, color: C(0.7) }, { position: 0.7, color: C(0) }] }];
+    let panel = hv.children.find(c => c.name === 'Scene panel');
+    if (k === 1) {
+      panel = ensureRect(hv, 'Scene panel', 2);
+      panel.resize(337, 600); panel.x = 1440 - 80 - 337; panel.y = 40; R(panel, V.rLg);
+      panel.fills = [IMG(await loadImg('hero-p-1.jpg'))];
+      if (ES['Shadow/Raised']) await panel.setEffectStyleIdAsync(ES['Shadow/Raised'].id);
+    } else if (panel) panel.remove();
     const card = hv.children.find(c => CARD_RE.test(c.name));
-    card.visible = true; card.x = 728; card.y = 64 + 552 - card.height - 40;
+    card.visible = true;
+    if (k === 1) { card.x = panel.x - card.width + 60; card.y = panel.y + panel.height - card.height - 40; }
+    else { card.x = 1440 - 80 - card.width; card.y = 680 - 80 - card.height; }
+    hv.appendChild(card); // card on top
     if (ES['Shadow/Raised']) await card.setEffectStyleIdAsync(ES['Shadow/Raised'].id);
-    report.info['slide' + k] = card.name + ' @' + card.x + ',' + Math.round(card.y);
+    darkCopy(comp);
+    report.info['slide' + k] = card.name + ' @' + Math.round(card.x) + ',' + Math.round(card.y);
   }
 });
 
-// ---------- mobile hero variants: photo in Stage ----------
-await step('hero mobile stage', async () => {
+// ---------- mobile: dark hero, photo in Stage ----------
+await step('hero mobile dark', async () => {
   for (const k of [1, 2, 3]) {
-    const comp = variant(heroSet, new RegExp('Slide=' + k + ', Device=Mobile'));
+    const comp = variant(new RegExp('Slide=' + k + ', Device=Mobile'));
+    const bg = comp.children.find(c => c.name === 'Background'); if (bg) bg.fills = [P(V.inverse)];
     const st = comp.findOne(n => n.name === 'Stage');
     for (const c of st.children) c.visible = false;
     st.fills = [IMG(await loadImg('hero-m-' + k + (k === 1 ? 's' : '') + '.jpg'))];
+    darkCopy(comp);
   }
 });
 
-// ---------- role cards ----------
-const LABELS = { Player: 'Open trial · Fri 23 Oct', Club: 'Match request · Riverside FC', Agent: 'Shortlist · 8 players' };
-const labelStyle = TS['Label/Small'] || TS['Label/Medium'] || TS['Label/Default'] || Object.values(TS).find(s => /^Label\//.test(s.name));
-report.info.labelStyle = labelStyle ? labelStyle.name : 'none';
-report.info.textStyles = Object.keys(TS).join(', ');
-await step('role cards', async () => {
-  if (labelStyle) await figma.loadFontAsync(labelStyle.fontName);
-  for (const c of roleSet.children) {
-    const role = (c.name.match(/Role=(\w+)/) || [])[1];
-    const st = c.findOne(n => n.name === 'Stage');
-    const file = { Player: 'role-player.jpg', Club: 'role-club.jpg', Agent: 'role-agent.jpg' }[role];
-    st.fills = [IMG(await loadImg(file))];
-    for (const ch of st.children) if (/^Preview/.test(ch.name)) ch.visible = false;
-    let sh = st.children.find(n => n.name === 'Shade');
-    if (!sh) { sh = figma.createRectangle(); sh.name = 'Shade'; st.appendChild(sh); sh.layoutPositioning = 'ABSOLUTE'; }
-    sh.x = 0; sh.y = 0; sh.resize(st.width, st.height); sh.constraints = { horizontal: 'STRETCH', vertical: 'STRETCH' };
-    sh.fills = [{ type: 'GRADIENT_LINEAR', gradientTransform: [[0, 1, 0], [-1, 0, 1]],
-      gradientStops: [{ position: 0.35, color: { r: inv.r, g: inv.g, b: inv.b, a: 0 } }, { position: 1, color: { r: inv.r, g: inv.g, b: inv.b, a: 0.72 } }] }];
-    let lb = st.children.find(n => n.name === 'Label');
-    if (!lb) { lb = figma.createText(); lb.name = 'Label'; st.appendChild(lb); lb.layoutPositioning = 'ABSOLUTE'; }
-    if (labelStyle) await lb.setTextStyleIdAsync(labelStyle.id);
-    lb.characters = LABELS[role];
-    lb.fills = [P(V.tInv)];
-    lb.textAutoResize = 'WIDTH_AND_HEIGHT';
-    const pad = st.width > 320 ? 16 : 12;
-    lb.x = pad; lb.y = st.height - lb.height - pad + 2;
-    lb.constraints = { horizontal: 'MIN', vertical: 'MAX' };
-  }
+// ---------- remove A/B board ----------
+await step('remove board', async () => {
+  const b = pageHome.children.find(n => n.name === 'M3 · Visual direction'); if (b) b.remove();
 });
 
-// ---------- B: comparison board ----------
-await step('board A vs B', async () => {
-  const old = pageHome.children.find(n => n.name === 'M3 · Visual direction'); if (old) old.remove();
-  let right = 0; for (const n of pageHome.children) right = Math.max(right, n.x + n.width);
-  const board = figma.createFrame(); board.name = 'M3 · Visual direction';
-  pageHome.appendChild(board); board.x = right + 400; board.y = 0;
-  board.layoutMode = 'VERTICAL'; board.itemSpacing = 40; board.paddingLeft = board.paddingRight = board.paddingTop = board.paddingBottom = 80;
-  board.primaryAxisSizingMode = 'AUTO'; board.counterAxisSizingMode = 'AUTO'; board.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
-  const hStyle = TS['Heading/H2'] || TS['Heading/H3'] || Object.values(TS).find(s => /^Heading/.test(s.name));
-  const bStyle = TS['Body/Large'] || TS['Body/Default'];
-  for (const s of [hStyle, bStyle]) if (s) await figma.loadFontAsync(s.fontName);
-  const txt = async (s, st) => { const t = figma.createText(); if (st) await t.setTextStyleIdAsync(st.id); t.characters = s; board.appendChild(t); return t; };
-  await txt('M3 · Visual direction', hStyle);
-  await txt('Two ways to bring real football into the hero. Same photos, same cards; the difference is how much of the slide the scene takes. Mobile is the same for both: the photo sits in the Stage.', bStyle);
-  const row = (name) => { const r = figma.createFrame(); r.name = name; r.layoutMode = 'HORIZONTAL'; r.itemSpacing = 40; r.primaryAxisSizingMode = 'AUTO'; r.counterAxisSizingMode = 'AUTO'; r.fills = []; board.appendChild(r); return r; };
-
-  await txt('A · Framed scene', hStyle);
-  const rA = row('Row A');
-  for (const k of [1, 2, 3]) rA.appendChild(variant(heroSet, new RegExp('Slide=' + k + ', Device=Desktop')).createInstance());
-
-  await txt('B · Full-bleed scene', hStyle);
-  const rB = row('Row B');
-  for (const k of [1, 2, 3]) {
-    const inst = variant(heroSet, new RegExp('Slide=' + k + ', Device=Desktop')).createInstance();
-    rB.appendChild(inst);
-    const f = inst.detachInstance(); f.name = 'Slide ' + k + ' · B';
-    const hv = f.findOne(n => n.name === 'Hero visual');
-    const ph = hv.children.find(c => c.name === 'Scene photo');
-    ph.x = 0; ph.y = 0; ph.resize(1440, 680);
-    for (const c of ['topLeftRadius','topRightRadius','bottomLeftRadius','bottomRightRadius']) { ph.setBoundVariable(c, null); ph[c] = 0; }
-    ph.fills = [IMG(await loadImg('hero-b-' + k + (k === 1 ? 's' : '') + '.jpg'))];
-    const sh = figma.createRectangle(); sh.name = 'Shade'; hv.insertChild(1, sh); sh.x = 0; sh.y = 0; sh.resize(1440, 680);
-    sh.fills = [{ type: 'GRADIENT_LINEAR', gradientTransform: [[1, 0, 0], [0, 1, 0]],
-      gradientStops: [{ position: 0, color: { r: inv.r, g: inv.g, b: inv.b, a: 0.9 } }, { position: 0.42, color: { r: inv.r, g: inv.g, b: inv.b, a: 0.7 } }, { position: 0.7, color: { r: inv.r, g: inv.g, b: inv.b, a: 0 } }] }];
-    const card = hv.children.find(c => CARD_RE.test(c.name));
-    card.x = 1440 - 80 - card.width; card.y = k === 1 ? 80 : 680 - 80 - card.height;
-    // copy on dark
-    const copy = f.findOne(n => n.name === 'Copy');
-    for (const t of copy.children.filter(n => n.type === 'TEXT')) t.fills = [P(t.name === 'Eyebrow' ? V.tInv2 : V.tInv)];
-    const tabs = f.findOne(n => n.name === 'Hero tabs');
-    for (const tab of tabs.children) {
-      const active = /active/.test(tab.name);
-      const bar = tab.findOne(n => n.name === 'Bar'); if (!active) bar.fills = [P(V.bInv)];
-      for (const t of tab.findAll(n => n.type === 'TEXT')) t.fills = [P(/^0\d$/.test(t.characters) ? V.tInv2 : V.tInv)];
+// ---------- check instances on home pages ----------
+await step('instances', async () => {
+  const out = [];
+  for (const f of pageHome.children.filter(n => /^Home ·/.test(n.name))) {
+    for (const i of f.findAll(n => n.type === 'INSTANCE' && /^Hero/.test(n.name))) {
+      const m = await i.getMainComponentAsync();
+      out.push(f.name + ' > ' + i.name + ' = ' + (m ? m.name : '?') + (i.overrides && i.overrides.length ? ' overrides:' + i.overrides.length : ''));
     }
   }
-  report.info.board = Math.round(board.x) + ',' + Math.round(board.y) + ' ' + Math.round(board.width) + 'x' + Math.round(board.height);
+  report.info.instances = out;
 });
-
 return report;
