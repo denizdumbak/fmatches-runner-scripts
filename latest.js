@@ -1,4 +1,4 @@
-// step 105 · M3: hero A (cerceveli sahne + tek kart) component'e, rol kartlarina fotograf; B (tam ekran sahne) karsilastirma panosu sekme 02'de
+// step 106 · M3 (105 + slayt 1 yeni stadyum fotografi): hero A (cerceveli sahne + tek kart) component'e, rol kartlarina fotograf; B (tam ekran sahne) karsilastirma panosu sekme 02'de
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -43,7 +43,7 @@ await step('hero A desktop', async () => {
     let ph = hv.children.find(c => c.name === 'Scene photo');
     if (!ph) { ph = figma.createRectangle(); ph.name = 'Scene photo'; hv.insertChild(0, ph); }
     ph.resize(592, 552); ph.x = 768; ph.y = 64; R(ph, V.rLg);
-    ph.fills = [IMG(await loadImg('hero-a-' + k + '.jpg'))];
+    ph.fills = [IMG(await loadImg('hero-a-' + k + (k === 1 ? 's' : '') + '.jpg'))];
     const card = hv.children.find(c => CARD_RE.test(c.name));
     card.visible = true; card.x = 728; card.y = 64 + 552 - card.height - 40;
     if (ES['Shadow/Raised']) await card.setEffectStyleIdAsync(ES['Shadow/Raised'].id);
@@ -57,7 +57,7 @@ await step('hero mobile stage', async () => {
     const comp = variant(heroSet, new RegExp('Slide=' + k + ', Device=Mobile'));
     const st = comp.findOne(n => n.name === 'Stage');
     for (const c of st.children) c.visible = false;
-    st.fills = [IMG(await loadImg('hero-m-' + k + '.jpg'))];
+    st.fills = [IMG(await loadImg('hero-m-' + k + (k === 1 ? 's' : '') + '.jpg'))];
   }
 });
 
@@ -121,7 +121,7 @@ await step('board A vs B', async () => {
     const ph = hv.children.find(c => c.name === 'Scene photo');
     ph.x = 0; ph.y = 0; ph.resize(1440, 680);
     for (const c of ['topLeftRadius','topRightRadius','bottomLeftRadius','bottomRightRadius']) { ph.setBoundVariable(c, null); ph[c] = 0; }
-    ph.fills = [IMG(await loadImg('hero-b-' + k + '.jpg'))];
+    ph.fills = [IMG(await loadImg('hero-b-' + k + (k === 1 ? 's' : '') + '.jpg'))];
     const sh = figma.createRectangle(); sh.name = 'Shade'; hv.insertChild(1, sh); sh.x = 0; sh.y = 0; sh.resize(1440, 680);
     sh.fills = [{ type: 'GRADIENT_LINEAR', gradientTransform: [[1, 0, 0], [0, 1, 0]],
       gradientStops: [{ position: 0, color: { r: inv.r, g: inv.g, b: inv.b, a: 0.9 } }, { position: 0.42, color: { r: inv.r, g: inv.g, b: inv.b, a: 0.7 } }, { position: 0.7, color: { r: inv.r, g: inv.g, b: inv.b, a: 0 } }] }];
