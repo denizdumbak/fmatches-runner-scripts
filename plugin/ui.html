@@ -52,36 +52,67 @@
     return first.indexOf('//') === 0 ? first.replace(/^\/\/\s*/, '') : '(adım notu yok)';
   }
 
+  // raw.githubusercontent.com/OWNER/REPO/BRANCH/PATH  ->  api.github.com/repos/OWNER/REPO/contents/PATH?ref=BRANCH
+  // Raw CDN 5 dk onbellek tutar; API her zaman son commit'i verir.
+  function toApi(url) {
+    var m = url.match(/^https:\/\/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/([^?#]+)/);
+    if (!m) return null;
+    return 'https://api.github.com/repos/' + m[1] + '/' + m[2] + '/contents/' + m[4] + '?ref=' + m[3];
+  }
+  function toRaw(url) {
+    var m = url.match(/^https:\/\/api\.github\.com\/repos\/([^\/]+)\/([^\/]+)\/contents\/([^?#]+)\?ref=([^&#]+)/);
+    if (!m) return null;
+    return 'https://raw.githubusercontent.com/' + m[1] + '/' + m[2] + '/' + m[4] + '/' + m[3];
+  }
+  function bust(u) { return u + (u.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now(); }
+  function decodeApi(body) {
+    var j = JSON.parse(body);
+    var bin = atob((j.content || '').replace(/\n/g, ''));
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+  function get(u) {
+    return fetch(bust(u), { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) {
+        var left = r.headers.get('x-ratelimit-remaining');
+        throw new Error('HTTP ' + r.status + (left === '0' ? ' (GitHub saatlik limit doldu)' : ''));
+      }
+      return r.text().then(function (t) { return { text: t, left: r.headers.get('x-ratelimit-remaining') }; });
+    });
+  }
+
   function doFetch() {
     var url = $('url').value.trim();
     if (!url) { setMeta('Önce script adresini yaz.', true); return Promise.reject(); }
     post({ type: 'save-url', url: url });
-    // cache buster: CDN eski sürümü vermesin
-    var bust = url + (url.indexOf('?') === -1 ? '?' : '&') + 't=' + Date.now();
     var isApi = url.indexOf('api.github.com') !== -1;
+    var api = isApi ? url : toApi(url);
+    var raw = isApi ? toRaw(url) : url;
     setMeta('Çekiliyor...');
-    return fetch(bust, { cache: 'no-store' })
-      .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      })
-      .then(function (body) {
-        if (!isApi) return body;
-        var j = JSON.parse(body);
-        var bin = atob((j.content || '').replace(/\n/g, ''));
-        var bytes = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        return new TextDecoder('utf-8').decode(bytes);
-      })
-      .then(function (src) {
-        $('code').value = src;
-        setMeta('Çekildi: ' + marker(src) + '  ·  ' + src.length + ' karakter');
-        return src;
-      })
-      .catch(function (e) {
-        setMeta('Çekilemedi: ' + e.message, true);
-        throw e;
+
+    var p;
+    if (api) {
+      p = get(api).then(function (r) {
+        return { src: decodeApi(r.text), note: 'API · taze' + (r.left ? ' · limit ' + r.left : '') };
+      }).catch(function (e) {
+        if (!raw) throw e;
+        return get(raw).then(function (r) {
+          return { src: r.text, note: 'API çekemedi (' + e.message + '), raw kullanıldı: 5 dk eski olabilir', warn: true };
+        });
       });
+    } else {
+      p = get(url).then(function (r) { return { src: r.text, note: 'doğrudan adres' }; });
+    }
+
+    return p.then(function (res) {
+      $('code').value = res.src;
+      setMeta('Çekildi: ' + marker(res.src) + '  ·  ' + res.note, !!res.warn);
+      return res.src;
+    }).catch(function (e) {
+      setMeta('Çekilemedi: ' + e.message, true);
+      throw e;
+    });
   }
 
   function run() {
