@@ -26,7 +26,7 @@ function tree(n, depth, max, out) {
   for (const k of n.children) tree(k, depth + 1, max, out);
 }
 
-for (const f of web.findAll(n => n.type === 'FRAME' && /^Profiles \/ Player( · |\/ Directory)/.test(n.name) && n.parent && n.parent.type === 'SECTION')) {
+for (const f of web.findAll(n => n.type === 'FRAME' && /^Profiles \/ Player( · | \/ Directory)/.test(n.name) && n.parent && n.parent.type === 'SECTION')) {
   const out = [];
   out.push(line(f, 0));
   for (const k of f.children) out.push(line(k, 1));
