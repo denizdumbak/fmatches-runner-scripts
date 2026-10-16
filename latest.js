@@ -1,222 +1,185 @@
-// step 121 · Linkler: Link row component, profil govdesi 1/3 + 2/3 (solda Links + Positions, sagda Career), mobilde Links en ustte
+// step 122 · About karti: About component (Device x State, Collapsed / Expanded, Show more), masaustu sag sutunda Career ustu, mobilde Positions ile Career arasi
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const pageOf = re => figma.root.children.find(p => re.test(p.name));
 const allVars = await figma.variables.getLocalVariablesAsync();
 const V = name => { const v = allVars.find(x => x.name === name); if (!v) throw new Error('variable missing: ' + name); return v; };
-const pick = (...pats) => { for (const p of pats) { const h = allVars.find(v => new RegExp(p, 'i').test(v.name)); if (h) return h; } return null; };
 const P = v => figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: .5, g: .5, b: .5 } }, 'color', v);
-const R = (n, v) => { for (const c of ['topLeftRadius','topRightRadius','bottomLeftRadius','bottomRightRadius']) n.setBoundVariable(c, v); };
 const TS = {}; for (const s of await figma.getLocalTextStylesAsync()) TS[s.name] = s;
 async function loadFonts(n) { for (const seg of n.getStyledTextSegments(['fontName'])) await figma.loadFontAsync(seg.fontName); }
 const r = n => Math.round(n);
 
-const C = {
-  bgSubtle: V('color/bg/subtle'), bgBrandSubtle: V('color/bg/brand-subtle'),
-  iconDefault: V('color/icon/default'), iconBrand: V('color/icon/brand'),
-  textPrimary: V('color/text/primary'), textSecondary: V('color/text/secondary'), textBrand: V('color/text/brand'),
-  border: V('color/border/default')
-};
-const radiusMd = pick('^radius/md$', 'radius/md');
-const sOver = TS['Label/Overline'], sDomain = TS['Label/Default Strong'];
-if (!sOver || !sDomain) throw new Error('text style missing');
-await figma.loadFontAsync(sOver.fontName);
-await figma.loadFontAsync(sDomain.fontName);
+const C = { textPrimary: V('color/text/primary'), textBrand: V('color/text/brand'), iconBrand: V('color/icon/brand') };
+const sBody = TS['Body/Default'], sLink = TS['Label/Default Strong'];
+if (!sBody || !sLink) throw new Error('text style missing');
+await figma.loadFontAsync(sBody.fontName);
+await figma.loadFontAsync(sLink.fontName);
 
-// ---------- icons ----------
-const ICONS = {
-  Video: '<circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l5.5-3.5z"/>',
-  Profile: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6.5 16c.6-1.4 1.5-2 2.5-2s1.9.6 2.5 2"/><path d="M14 10h4M14 13h3"/>',
-  Social: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
-  Website: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9S9.5 5.5 12 3z"/>',
-  Open: '<path d="M8 16L16 8M10 8h6v6"/>'
+const TEXT = {
+  main: 'Attacking midfielder who likes to receive between the lines and play the final pass. Comfortable as a 10 or drifting in from the right, and happy to press from the front. Captained Riverside FC U19 in the 2023/24 season.\nStudying sports science part-time. Open to trials in England and the Netherlands for next season.',
+  n914: 'Box-to-box midfielder, strong in the air and on second balls. Looking for a club in Poland or Germany.'
 };
-function icon(key, size, colorVar) {
-  const n = figma.createNodeFromSvg('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + ICONS[key] + '</svg>');
+const textFor = name => /Directory/.test(name) ? null : /9–14/.test(name) ? TEXT.n914 : /15\+/.test(name) ? null : TEXT.main;
+const showMoreFor = name => !/9–14/.test(name);
+
+function chevron(dir) {
+  const d = dir === 'down' ? 'M6 9l6 6 6-6' : 'M6 15l6-6 6 6';
+  const n = figma.createNodeFromSvg('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>');
   n.fills = [];
   for (const v of n.findAll(() => true)) {
-    if ('strokes' in v && v.strokes.length) v.strokes = [P(colorVar)];
+    if ('strokes' in v && v.strokes.length) v.strokes = [P(C.iconBrand)];
     if ('fills' in v && v.fills.length) v.fills = [];
     if ('constraints' in v) v.constraints = { horizontal: 'SCALE', vertical: 'SCALE' };
   }
-  n.rescale(size / 24);
-  n.name = key === 'Open' ? 'Open icon' : 'Icon';
+  n.rescale(16 / 24);
+  n.name = 'Chevron';
   return n;
 }
-async function txt(name, style, colorVar, chars) {
-  const t = figma.createText();
-  await t.setTextStyleIdAsync(style.id);
-  t.characters = chars;
-  t.fills = [P(colorVar)];
-  t.name = name;
-  return t;
-}
 
-// ---------- 1. Link row component (sekme 01, 3 · Player profile) ----------
+// ---------- sayfalar ----------
 const p1 = pageOf(/^01/);
 await p1.loadAsync();
-let linkSet = p1.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Link row');
-
-await step('Link row component', async () => {
-  if (linkSet) { report.info.linkRow = 'exists, reused ' + linkSet.id; return; }
-  const sec = p1.findOne(n => n.type === 'SECTION' && /Player profile/.test(n.name));
-  if (!sec) throw new Error('section 3 · Player profile not found');
-  const comps = [];
-  for (const T of ['Video', 'Profile', 'Social', 'Website']) {
-    for (const S of ['Default', 'Hover']) {
-      const c = figma.createComponent();
-      c.name = 'Type=' + T + ', State=' + S;
-      c.layoutMode = 'HORIZONTAL';
-      c.counterAxisAlignItems = 'CENTER';
-      c.itemSpacing = 16;
-      c.paddingTop = 12; c.paddingBottom = 12; c.paddingLeft = 0; c.paddingRight = 0;
-      c.fills = [];
-      c.strokes = [P(C.border)];
-      c.strokeTopWeight = 0; c.strokeLeftWeight = 0; c.strokeRightWeight = 0; c.strokeBottomWeight = 1;
-      c.strokeAlign = 'INSIDE';
-
-      const box = figma.createFrame();
-      box.name = 'Icon box';
-      box.layoutMode = 'HORIZONTAL';
-      box.primaryAxisAlignItems = 'CENTER';
-      box.counterAxisAlignItems = 'CENTER';
-      box.resize(40, 40);
-      box.layoutSizingHorizontal = 'FIXED'; box.layoutSizingVertical = 'FIXED';
-      box.fills = [P(T === 'Video' ? C.bgBrandSubtle : C.bgSubtle)];
-      if (radiusMd) R(box, radiusMd);
-      box.appendChild(icon(T, 20, T === 'Video' ? C.iconBrand : C.iconDefault));
-      c.appendChild(box);
-
-      const text = figma.createFrame();
-      text.name = 'Text';
-      text.layoutMode = 'VERTICAL';
-      text.itemSpacing = 2;
-      text.fills = [];
-      c.appendChild(text);
-      const tType = await txt('Type', sOver, C.textSecondary, T);
-      text.appendChild(tType);
-      const tDom = await txt('Domain', sDomain, S === 'Hover' ? C.textBrand : C.textPrimary, T === 'Video' ? 'youtube.com' : T === 'Profile' ? 'transfermarkt.com' : T === 'Social' ? 'instagram.com' : 'example.com');
-      text.appendChild(tDom);
-      tDom.layoutSizingHorizontal = 'FILL';
-      tDom.textTruncation = 'ENDING';
-      tDom.maxLines = 1;
-
-      c.appendChild(icon('Open', 16, S === 'Hover' ? C.iconBrand : C.iconDefault));
-
-      c.resize(352, 64);
-      c.layoutSizingHorizontal = 'FIXED';
-      c.layoutSizingVertical = 'HUG';
-      text.layoutSizingHorizontal = 'FILL';
-      sec.appendChild(c);
-      comps.push(c);
-    }
-  }
-  linkSet = figma.combineAsVariants(comps, sec);
-  linkSet.name = 'Link row';
-  linkSet.layoutMode = 'VERTICAL';
-  linkSet.itemSpacing = 16;
-  linkSet.paddingTop = 24; linkSet.paddingBottom = 24; linkSet.paddingLeft = 24; linkSet.paddingRight = 24;
-  linkSet.layoutSizingHorizontal = 'HUG'; linkSet.layoutSizingVertical = 'HUG';
-  linkSet.description = 'Row in the Links card of a profile. Type is set from the URL domain: youtube, vimeo, hudl, veo = Video; transfermarkt, sofascore, besoccer = Profile; instagram, x, twitter, tiktok, facebook = Social; anything else = Website. Video links come first, the rest in the order they were added. Show the domain only (no www, no path), one line, cut with an ellipsis. Opens in a new tab. No links: the whole card is hidden (directory profiles never show it). More than 4 links: show the first 4 and a "Show all (n)" text button. Last row has no divider.';
-
-  // hover
-  for (const c of linkSet.children) {
-    if (c.variantProperties.State !== 'Default') continue;
-    const hov = linkSet.children.find(h => h.variantProperties.Type === c.variantProperties.Type && h.variantProperties.State === 'Hover');
-    await c.setReactionsAsync([{ trigger: { type: 'ON_HOVER' }, actions: [{ type: 'NODE', destinationId: hov.id, navigation: 'CHANGE_TO', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.15 }, preserveScrollPosition: false, resetVideoPosition: false }] }]);
-  }
-  report.info.linkRow = 'created ' + linkSet.id;
-});
-
-function variant(T) { return linkSet.children.find(c => c.variantProperties.Type === T && c.variantProperties.State === 'Default'); }
-
-// ---------- 2. Profil sayfalari ----------
 const web = pageOf(/^02/);
 await web.loadAsync();
 const frames = web.findAll(n => n.type === 'FRAME' && /^Profiles \/ Player/.test(n.name) && n.parent && n.parent.type === 'SECTION');
+const mainOf = desk => frames.find(f => (desk ? f.width > 800 : f.width <= 800) && !/Directory|Name length/.test(f.name));
 const oldH = new Map();
 for (const s of web.children.filter(n => n.type === 'SECTION')) for (const k of s.children) oldH.set(k.id, k.height);
 
-const DATA = {
-  main: [['Video', 'youtube.com'], ['Profile', 'transfermarkt.com'], ['Social', 'instagram.com']],
-  n914: [['Profile', 'transfermarkt.com']],
-  n15: [['Video', 'youtube.com'], ['Profile', 'transfermarkt.com'], ['Social', 'instagram.com'], ['Website', 'vanderwesthuizen-moreau-football.com']]
-};
-const dataFor = name => /Directory/.test(name) ? null : /9–14/.test(name) ? DATA.n914 : /15\+/.test(name) ? DATA.n15 : DATA.main;
+// ---------- 1. About component (sekme 01, 3 · Player profile) ----------
+let aboutSet = p1.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'About');
 
-async function makeLinksCard(template, rows) {
-  const card = template.clone();
-  card.name = 'Links';
-  for (const k of card.children.slice(1)) k.remove();
-  const head = card.children[0];
-  await loadFonts(head);
-  head.characters = 'Links';
-  const list = figma.createFrame();
-  list.name = 'Link list';
-  list.layoutMode = 'VERTICAL';
-  list.itemSpacing = 0;
-  list.fills = [];
-  card.appendChild(list);
-  list.layoutSizingHorizontal = 'FILL';
-  list.layoutSizingVertical = 'HUG';
-  for (let i = 0; i < rows.length; i++) {
-    const inst = variant(rows[i][0]).createInstance();
-    list.appendChild(inst);
-    inst.layoutSizingHorizontal = 'FILL';
-    const dom = inst.findOne(n => n.name === 'Domain');
-    await figma.loadFontAsync(dom.fontName);
-    dom.characters = rows[i][1];
-    if (i === rows.length - 1) inst.strokes = [];
+await step('About component', async () => {
+  if (aboutSet) { report.info.about = 'exists, reused ' + aboutSet.id; return; }
+  const sec = p1.findOne(n => n.type === 'SECTION' && /Player profile/.test(n.name));
+  if (!sec) throw new Error('section 3 · Player profile not found');
+  const comps = [];
+  for (const D of ['Desktop', 'Mobile']) {
+    const f = mainOf(D === 'Desktop');
+    if (!f) throw new Error('main profile frame not found: ' + D);
+    const positions = f.findOne(n => n.type === 'FRAME' && n.name === 'Positions');
+    const career = f.findOne(n => n.type === 'FRAME' && n.name === 'Career');
+    const w = D === 'Desktop' ? r(career.width) : r(positions.width);
+    for (const S of ['Collapsed', 'Expanded']) {
+      const card = positions.clone();
+      sec.appendChild(card);
+      for (const k of card.children.slice(1)) k.remove();
+      const head = card.children[0];
+      await loadFonts(head);
+      head.characters = 'About';
+      head.name = 'Heading';
+
+      const content = figma.createFrame();
+      content.name = 'About content';
+      content.layoutMode = 'VERTICAL';
+      content.itemSpacing = 12;
+      content.fills = [];
+      content.clipsContent = false;
+      card.appendChild(content);
+
+      const t = figma.createText();
+      await t.setTextStyleIdAsync(sBody.id);
+      t.characters = TEXT.main;
+      t.fills = [P(C.textPrimary)];
+      t.name = 'About text';
+      content.appendChild(t);
+      t.paragraphSpacing = 12;
+      if (t.textStyleId !== sBody.id) { await t.setTextStyleIdAsync(sBody.id); report.info.paragraphSpacing = 'detached the style, reverted'; }
+      t.layoutSizingHorizontal = 'FILL';
+      t.textAutoResize = 'HEIGHT';
+      if (D === 'Desktop') t.maxWidth = 640;
+      if (S === 'Collapsed') { t.textTruncation = 'ENDING'; t.maxLines = 4; }
+
+      const more = figma.createFrame();
+      more.name = 'Show more';
+      more.layoutMode = 'HORIZONTAL';
+      more.counterAxisAlignItems = 'CENTER';
+      more.itemSpacing = 4;
+      more.paddingTop = 4; more.paddingBottom = 4;
+      more.fills = [];
+      content.appendChild(more);
+      const lt = figma.createText();
+      await lt.setTextStyleIdAsync(sLink.id);
+      lt.characters = S === 'Collapsed' ? 'Show more' : 'Show less';
+      lt.fills = [P(C.textBrand)];
+      lt.name = 'Label';
+      more.appendChild(lt);
+      more.appendChild(chevron(S === 'Collapsed' ? 'down' : 'up'));
+      more.layoutSizingHorizontal = 'HUG'; more.layoutSizingVertical = 'HUG';
+
+      card.resize(w, card.height);
+      const c = figma.createComponentFromNode(card);
+      c.name = 'Device=' + D + ', State=' + S;
+      c.counterAxisSizingMode = 'FIXED';
+      c.primaryAxisSizingMode = 'AUTO';
+      content.layoutSizingHorizontal = 'FILL';
+      content.layoutSizingVertical = 'HUG';
+      comps.push(c);
+    }
   }
-  return card;
+  aboutSet = figma.combineAsVariants(comps, sec);
+  aboutSet.name = 'About';
+  aboutSet.layoutMode = 'VERTICAL';
+  aboutSet.itemSpacing = 24;
+  aboutSet.paddingTop = 24; aboutSet.paddingBottom = 24; aboutSet.paddingLeft = 24; aboutSet.paddingRight = 24;
+  aboutSet.layoutSizingHorizontal = 'HUG'; aboutSet.layoutSizingVertical = 'HUG';
+  aboutSet.description = 'About card on a profile, from the "Additional information" field. Text as the user wrote it, in their own language, line breaks kept. Line length max 640 px on desktop. Longer than 4 lines: show 4 lines with an ellipsis and a "Show more" text button; it expands the card in place ("Show less" collapses it). 4 lines or fewer: no button. Empty field: the whole card is hidden (directory profiles never show it). Desktop: right column, above Career. Mobile: between Positions and Career.';
+
+  for (const c of aboutSet.children) {
+    const other = aboutSet.children.find(o => o.variantProperties.Device === c.variantProperties.Device && o.variantProperties.State !== c.variantProperties.State);
+    const btn = c.findOne(n => n.name === 'Show more');
+    await btn.setReactionsAsync([{ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'NODE', destinationId: other.id, navigation: 'CHANGE_TO', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.15 }, preserveScrollPosition: false, resetVideoPosition: false }] }]);
+  }
+  report.info.about = 'created ' + aboutSet.id;
+});
+
+const variant = D => aboutSet.children.find(c => c.variantProperties.Device === D && c.variantProperties.State === 'Collapsed');
+
+async function makeAbout(D, name) {
+  const inst = variant(D).createInstance();
+  inst.name = 'About';
+  const t = inst.findOne(n => n.name === 'About text');
+  await loadFonts(t);
+  t.characters = textFor(name);
+  if (!showMoreFor(name)) inst.findOne(n => n.name === 'Show more').visible = false;
+  return inst;
 }
 
+// ---------- 2. Profil sayfalari ----------
 const fixed = [];
 for (const f of frames) {
   await step('profile · ' + f.name, async () => {
     const body = f.findOne(n => n.name === 'Profile body');
     if (!body) throw new Error('Profile body not found');
     const bodyOldH = body.height, bodyOldBottom = body.y + body.height;
-    const rows = dataFor(f.name);
-    const old = body.findOne(n => n.type === 'FRAME' && n.name === 'Links');
-    if (old) old.remove();
+    for (const old of body.findAll(n => n.name === 'About')) old.remove();
+    const txt = textFor(f.name);
 
     if (f.width > 800) {
       const cols = body.findOne(n => n.name === 'Profile columns');
-      let left = cols.findOne(n => n.name === 'Left column');
-      const positions = cols.findOne(n => n.type === 'FRAME' && n.name === 'Positions');
       const career = cols.findOne(n => n.type === 'FRAME' && n.name === 'Career');
-      if (!left) {
-        left = figma.createFrame();
-        left.name = 'Left column';
-        cols.insertChild(0, left);
-        left.layoutMode = 'VERTICAL';
-        left.itemSpacing = 24;
-        left.fills = [];
-        left.clipsContent = false;
-        left.resize(416, 100);
-        left.layoutSizingHorizontal = 'FIXED';
-        left.layoutSizingVertical = 'HUG';
-        left.appendChild(positions);
-        positions.layoutSizingHorizontal = 'FILL';
-        positions.layoutSizingVertical = 'HUG';
-        const content = positions.findOne(n => n.name === 'Positions content');
-        content.layoutMode = 'VERTICAL';
-        content.itemSpacing = 24;
-        const pitch = content.findOne(n => n.name === 'Pitch');
-        if (pitch.width > 360) pitch.rescale(352 / pitch.width);
+      let right = cols.findOne(n => n.name === 'Right column');
+      if (!right) {
+        right = figma.createFrame();
+        right.name = 'Right column';
+        cols.insertChild(cols.children.indexOf(career), right);
+        right.layoutMode = 'VERTICAL';
+        right.itemSpacing = 24;
+        right.fills = [];
+        right.clipsContent = false;
+        right.appendChild(career);
+        right.layoutSizingHorizontal = 'FILL';
+        right.layoutSizingVertical = 'HUG';
         career.layoutSizingHorizontal = 'FILL';
         career.layoutSizingVertical = 'HUG';
-        cols.counterAxisAlignItems = 'MIN';
       }
-      if (rows) { const card = await makeLinksCard(positions, rows); left.insertChild(0, card); card.layoutSizingHorizontal = 'FILL'; card.layoutSizingVertical = 'HUG'; }
-    } else if (rows) {
-      const positions = body.findOne(n => n.type === 'FRAME' && n.name === 'Positions');
-      const card = await makeLinksCard(positions, rows);
-      body.insertChild(0, card);
-      card.layoutSizingHorizontal = 'FILL';
-      card.layoutSizingVertical = 'HUG';
+      if (txt) { const a = await makeAbout('Desktop', f.name); right.insertChild(0, a); a.layoutSizingHorizontal = 'FILL'; }
+    } else if (txt) {
+      const career = body.findOne(n => n.type === 'FRAME' && n.name === 'Career');
+      const a = await makeAbout('Mobile', f.name);
+      body.insertChild(body.children.indexOf(career), a);
+      a.layoutSizingHorizontal = 'FILL';
     }
 
     if (f.layoutMode === 'NONE') {
@@ -224,7 +187,7 @@ for (const f of frames) {
       for (const c of f.children) if (c !== body && c.y >= bodyOldBottom - 1) c.y += d;
       f.resizeWithoutConstraints(f.width, f.height + d);
     }
-    fixed.push(f.name + ': ' + r(oldH.get(f.id)) + ' -> ' + r(f.height));
+    fixed.push(f.name + ': ' + (txt ? 'About' : 'no About') + ', ' + r(oldH.get(f.id)) + ' -> ' + r(f.height));
   });
 }
 report.info.frames = fixed;
