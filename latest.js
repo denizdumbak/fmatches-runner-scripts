@@ -1,40 +1,65 @@
-// step 124 · inspect (salt okunur): directory profilinde siluet neden gorunmuyor; ana profil ve directory hero yapisi
+// step 125 · Directory profili: siluet hero'nun icine, ana profildeki gibi soluk arma arkada; eski No photo · Stage kutusu gizlendi; bos durum metni tek satir
 
-const report = { info: {} };
+const report = { done: [], errors: [], info: {} };
+async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
+async function loadFonts(n) { for (const seg of n.getStyledTextSegments(['fontName'])) await figma.loadFontAsync(seg.fontName); }
 const r = n => Math.round(n);
 const web = figma.root.children.find(p => /^02/.test(p.name));
 await web.loadAsync();
+const F = name => web.findOne(n => n.type === 'FRAME' && n.name === name && n.parent && n.parent.type === 'SECTION');
 
-function fillInfo(n) {
-  if (!('fills' in n) || !Array.isArray(n.fills) || !n.fills.length) return '';
-  return ' fills[' + n.fills.map(f => f.type + (f.visible === false ? '(off)' : '') + (f.opacity !== undefined && f.opacity < 1 ? '@' + Math.round(f.opacity * 100) : '')).join(',') + ']';
-}
-function line(n, depth) {
-  let s = '  '.repeat(depth) + n.name + ' <' + n.type + '> ' + r(n.x) + ',' + r(n.y) + ' ' + r(n.width) + 'x' + r(n.height);
-  if (n.visible === false) s += ' HIDDEN';
-  if ('opacity' in n && n.opacity < 1) s += ' op' + Math.round(n.opacity * 100);
-  if ('layoutMode' in n && n.layoutMode && n.layoutMode !== 'NONE') s += ' ' + n.layoutMode + ' gap' + n.itemSpacing + ' pad' + [n.paddingTop, n.paddingRight, n.paddingBottom, n.paddingLeft].join('/');
-  if ('layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE') s += ' ABS';
-  if ('clipsContent' in n && n.clipsContent) s += ' clip';
-  if ('itemReverseZIndex' in n && n.itemReverseZIndex) s += ' reverseZ';
-  s += fillInfo(n);
-  return s;
-}
-function tree(n, depth, max, out) {
-  out.push(line(n, depth));
-  if (depth >= max || n.type === 'INSTANCE' || !('children' in n)) return;
-  for (const k of n.children) tree(k, depth + 1, max, out);
-}
+for (const D of ['Desktop', 'Mobile']) {
+  await step('directory · ' + D, async () => {
+    const main = F('Profiles / Player · ' + D);
+    const dir = F('Profiles / Player / Directory, no photo · ' + D);
+    if (!main || !dir) throw new Error('frame missing');
+    const mHero = main.findOne(n => /^Hero/.test(n.name));
+    const hero = dir.findOne(n => /^Hero/.test(n.name));
+    const out = [];
 
-for (const f of web.findAll(n => n.type === 'FRAME' && /^Profiles \/ Player( · | \/ Directory)/.test(n.name) && n.parent && n.parent.type === 'SECTION')) {
-  const out = [];
-  out.push(line(f, 0));
-  for (const k of f.children) out.push(line(k, 1));
-  const hero = f.findOne(n => /^Hero/.test(n.name));
-  if (hero) {
-    const id = hero.findOne(n => n.name === 'Identity');
-    for (const k of hero.children) { if (k === id) out.push(line(k, 2) + ' (identity, skipped)'); else tree(k, 2, 5, out); }
-  }
-  report.info[f.name] = out;
+    // 1. soluk arma (ana profilden kopya, en arkada)
+    if (!hero.children.some(k => k.name === 'Club crest' && k.type === 'FRAME')) {
+      const mc = mHero.children.find(k => k.name === 'Club crest');
+      const c = mc.clone();
+      hero.insertChild(0, c);
+      c.layoutPositioning = 'ABSOLUTE';
+      c.x = mc.x; c.y = mc.y;
+      out.push('crest ' + r(c.x) + ',' + r(c.y) + ' op' + Math.round(c.opacity * 100));
+    }
+
+    // 2. siluet
+    let sil = dir.findOne(n => n.type === 'INSTANCE' && n.name === 'Player silhouette');
+    if (!sil) throw new Error('Player silhouette not found');
+    const stage = hero.findOne(n => n.name === 'No photo · Stage');
+
+    if (D === 'Desktop') {
+      const mPhoto = mHero.children.find(k => /^Player photo/.test(k.name));
+      if (sil.parent !== hero) { hero.appendChild(sil); sil.layoutPositioning = 'ABSOLUTE'; }
+      sil.x = r(mPhoto.x + (mPhoto.width - sil.width) / 2);
+      sil.y = r(hero.height - sil.height);
+      if (stage) { stage.visible = false; stage.name = 'No photo · Stage (old, hidden)'; }
+      out.push('silhouette ' + sil.x + ',' + sil.y + ' (photo box ' + r(mPhoto.x) + ',' + r(mPhoto.y) + ')');
+    } else {
+      if (!stage) throw new Error('mobile stage not found');
+      stage.name = 'Player photo · silhouette';
+      stage.fills = [];
+      for (const k of stage.children.slice()) if (k !== sil) k.remove();
+      if (sil.parent !== stage) { stage.appendChild(sil); sil.layoutPositioning = 'ABSOLUTE'; }
+      sil.x = r((stage.width - sil.width) / 2);
+      sil.y = r(stage.height - sil.height);
+      out.push('silhouette in stage ' + sil.x + ',' + sil.y + ' stage ' + r(stage.width) + 'x' + r(stage.height));
+    }
+
+    // 3. bos durum metni: fotograf ve mesaj tek satirda
+    const t = dir.findOne(n => n.type === 'TEXT' && /^(Messaging opens|Photo and messaging)/.test(n.characters));
+    if (t) {
+      await loadFonts(t);
+      t.characters = 'Photo and messaging appear once the player claims this profile.';
+      t.name = t.characters;
+      out.push('note text updated (' + r(t.width) + ' wide)');
+    } else out.push('note text not found');
+
+    report.info[D] = out;
+  });
 }
 return report;
