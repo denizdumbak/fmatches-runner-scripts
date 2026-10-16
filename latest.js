@@ -1,70 +1,86 @@
-// step 130 · Club entry (129 + 130 birlesik): Expanded'da Achievements satiri ozellige yeniden baglandi (tiklayinca kayboluyordu), "Less" katmani ayrildi; 01'de Achievements ve acici varsayilan acik, ornek iki basari
+// step 131 · INSPECT (salt okunur): profil header/ticker kontrolu, eski Display/Hero stillerinin kullanimi, gizli "No photo · Stage (old, hidden)", kulup seridindeki League country bayraklari. Hicbir sey degismez.
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
-const r = n => Math.round(n);
-async function loadFonts(n) { for (const seg of n.getStyledTextSegments(['fontName'])) await figma.loadFontAsync(seg.fontName); }
+const pageOf = re => figma.root.children.find(p => re.test(p.name));
+const p01 = pageOf(/^01/), p02 = pageOf(/^02/), p03 = pageOf(/^03/);
+for (const p of [p01, p02, p03]) if (p) await p.loadAsync();
 
-const p1 = figma.root.children.find(p => /^01/.test(p.name));
-await p1.loadAsync();
-const set = p1.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Club entry');
-const keyOf = re => Object.keys(set.componentPropertyDefinitions).find(k => re.test(k));
-const achKey = keyOf(/^Achievements#/), moreKey = keyOf(/^Achievements more#/);
+function box(n) { const b = n.absoluteBoundingBox; return b ? Math.round(b.x) + ',' + Math.round(b.y) + ' ' + Math.round(b.width) + 'x' + Math.round(b.height) : '-'; }
 
-await step('before', async () => {
-  report.info.before = set.children.map(c => {
-    const row = c.findOne(n => n.name === 'Achievements'), more = c.findOne(n => n.name === 'More');
-    return c.name + ' · row ' + (row.visible ? 'on' : 'OFF') + ' ' + JSON.stringify(row.componentPropertyReferences || {}) + ' · more ' + (more.visible ? 'on' : 'OFF') + ' ' + JSON.stringify(more.componentPropertyReferences || {});
-  });
-});
+async function instInfo(n) {
+  if (n.type !== 'INSTANCE') return n.type;
+  let main = null; try { main = await n.getMainComponentAsync(); } catch (e) {}
+  const setName = main && main.parent && main.parent.type === 'COMPONENT_SET' ? main.parent.name : (main ? main.name : '?');
+  return 'INSTANCE of ' + setName + ' [' + JSON.stringify(n.variantProperties || {}) + '] main ' + (main ? main.id : '?');
+}
 
-await step('rebind Expanded', async () => {
-  for (const c of set.children) {
-    if (c.variantProperties.State !== 'Expanded') continue;
-    const row = c.findOne(n => n.name === 'Achievements');
-    row.visible = true;
-    row.componentPropertyReferences = { visible: achKey };
-    const more = c.findOne(n => n.name === 'More');
-    more.visible = true;
-    more.componentPropertyReferences = { visible: moreKey };
-    const lbl = more.findOne(n => n.name === 'Count');
-    if (lbl) lbl.name = 'Less label';
+// 2 · Profil sayfalarinda header ve ticker, ana sayfa ile karsilastirma
+await step('2 header/ticker', async () => {
+  const frames = p02.findAll(n => n.type === 'FRAME' && /^(Home \/ Main|Profiles \/ Player)/.test(n.name) && n.parent && n.parent.type === 'SECTION');
+  const out = [];
+  for (const f of frames) {
+    const row = { frame: f.name, section: f.parent.name, top: [] };
+    for (const c of f.children.slice(0, 4)) {
+      let desc = c.name + ' · ' + await instInfo(c) + (c.visible ? '' : ' HIDDEN');
+      if (c.type !== 'INSTANCE' && c.children) {
+        const inner = [];
+        for (const k of c.children.slice(0, 3)) inner.push(k.name + ' (' + await instInfo(k) + ')');
+        desc += ' > ' + inner.join(' | ');
+      }
+      row.top.push(desc);
+    }
+    out.push(row);
   }
-  // Default ve Hover da bagli olsun (emin olmak icin)
-  for (const c of set.children) {
-    if (c.variantProperties.State === 'Expanded') continue;
-    c.findOne(n => n.name === 'Achievements').componentPropertyReferences = { visible: achKey };
-    c.findOne(n => n.name === 'More').componentPropertyReferences = { visible: moreKey };
-  }
+  report.info.frames = out;
 });
 
-await step('after', async () => {
-  report.info.after = set.children.map(c => {
-    const row = c.findOne(n => n.name === 'Achievements'), more = c.findOne(n => n.name === 'More');
-    const t = more.findOne(n => n.type === 'TEXT');
-    return c.name + ' · row ' + JSON.stringify(row.componentPropertyReferences || {}) + ' · more ' + JSON.stringify(more.componentPropertyReferences || {}) + ' · "' + t.characters + '" (' + t.name + ') · ' + r(c.height);
-  });
+// 9 · Eski Display/Hero stillerinin kullanimi
+await step('9 old hero styles', async () => {
+  const styles = (await figma.getLocalTextStylesAsync()).filter(s => /^Display\/Hero/.test(s.name));
+  const res = {};
+  for (const s of styles) res[s.name] = { id: s.id, uses: [] };
+  for (const p of [p01, p02, p03]) {
+    if (!p) continue;
+    const texts = p.findAll(n => n.type === 'TEXT');
+    for (const t of texts) {
+      let ids = [];
+      if (t.textStyleId === figma.mixed) { for (const seg of t.getStyledTextSegments(['textStyleId'])) ids.push(seg.textStyleId); }
+      else ids.push(t.textStyleId);
+      for (const s of styles) if (ids.indexOf(s.id) >= 0) res[s.name].uses.push(p.name.slice(0, 2) + ' · ' + t.name + ' · in ' + (t.parent ? t.parent.name : '?'));
+    }
+  }
+  for (const k in res) res[k].count = res[k].uses.length, res[k].uses = res[k].uses.slice(0, 8);
+  report.info.heroStyles = res;
 });
 
-// ---------- 129: 01'de varsayilan acik, ornek metin ----------
-await step('defaults on', async () => {
-  set.editComponentProperty(achKey, { defaultValue: true });
-  set.editComponentProperty(moreKey, { defaultValue: true });
+// 10 · Gizli eski stage
+await step('10 old stage', async () => {
+  const hits = p02.findAll(n => /No photo · Stage/.test(n.name));
+  report.info.oldStage = hits.map(n => n.id + ' · ' + n.name + ' · ' + n.type + (n.visible ? ' VISIBLE' : ' hidden') + ' · parent ' + (n.parent ? n.parent.name : '?') + ' · top ' + (function (x) { while (x.parent && x.parent.type !== 'SECTION' && x.parent.type !== 'PAGE') x = x.parent; return x.name; })(n));
 });
-await step('sample text in variants', async () => {
-  for (const c of set.children) {
-    const t = c.findOne(n => n.name === 'Achievements text');
-    await loadFonts(t);
-    t.characters = 'U19 league champions 2022/23\nClub young player of the year 2023';
+
+// 11 · Kulup seridi bayraklari
+await step('11 club strip flags', async () => {
+  const sets = p01.findAll(n => (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') && /^Club strip/.test(n.name));
+  const flagSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Flag');
+  report.info.flagSet = flagSet ? flagSet.id + ' · variants ' + flagSet.children.map(c => c.name).join(' / ') : 'missing';
+  const out = [];
+  function tree(n, d, acc) {
+    acc.push('  '.repeat(d) + n.name + ' · ' + n.type + ' · ' + Math.round(n.width) + 'x' + Math.round(n.height) + (n.layoutMode && n.layoutMode !== 'NONE' ? ' · ' + n.layoutMode + ' gap ' + n.itemSpacing : '') + (n.visible ? '' : ' HIDDEN') + (n.type === 'TEXT' ? ' "' + n.characters.slice(0, 30) + '"' : ''));
+    if (n.type === 'INSTANCE' || !n.children || d > 4) return;
+    for (const c of n.children) tree(c, d + 1, acc);
   }
-});
-await step('where and pages', async () => {
-  report.info.where = 'page 01 · ' + set.parent.name + ' · set "Club entry" at ' + r(set.x) + ',' + r(set.y) + ' size ' + r(set.width) + 'x' + r(set.height);
-  const web = figma.root.children.find(p => /^02/.test(p.name));
-  await web.loadAsync();
-  let on = 0, off = 0;
-  for (const e of web.findAll(n => n.type === 'INSTANCE' && n.name === 'Club entry')) { if (e.componentProperties[achKey].value) on++; else off++; }
-  report.info.pageEntries = 'achievements on: ' + on + ', off: ' + off;
+  for (const s of sets) {
+    const acc = []; tree(s, 0, acc); out.push(acc.slice(0, 60).join('\n'));
+  }
+  report.info.clubStrip = out;
+  const inst = p02.findAll(n => n.type === 'INSTANCE' && /^Club strip/.test(n.name));
+  const insts = [];
+  for (const i of inst) insts.push(i.name + ' · ' + box(i) + ' · ' + await instInfo(i));
+  report.info.clubStripInstances = insts;
+  const loose = p02.findAll(n => /League country/.test(n.name) && n.type !== 'INSTANCE');
+  report.info.leagueCountryOn02 = loose.map(n => n.id + ' · ' + n.name + ' · ' + n.type + ' · parent ' + (n.parent ? n.parent.name : '?'));
 });
 
 return report;
