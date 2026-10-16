@@ -1,4 +1,4 @@
-// step 127 · Achievements: Club entry'ye gizli Achievements satiri (kupa ikonu + ikincil metin, boolean ozellik), profillerde test verisi
+// step 128 · Achievements A: kapaliyken ilk basari + "+N" acici, tiklayinca kariyer satiri yerinde acilir (State=Expanded), basarilar alt alta
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -10,89 +10,106 @@ const TS = {}; for (const s of await figma.getLocalTextStylesAsync()) TS[s.name]
 async function loadFonts(n) { for (const seg of n.getStyledTextSegments(['fontName'])) await figma.loadFontAsync(seg.fontName); }
 const r = n => Math.round(n);
 
-const C = { textSecondary: V('color/text/secondary'), iconDefault: V('color/icon/default') };
-const sSmall = TS['Body/Small'];
-if (!sSmall) throw new Error('Body/Small missing');
-await figma.loadFontAsync(sSmall.fontName);
+const C = { textBrand: V('color/text/brand'), iconBrand: V('color/icon/brand') };
+const sLabel = TS['Label/Default Strong'];
+await figma.loadFontAsync(sLabel.fontName);
 
-function trophy() {
-  const n = figma.createNodeFromSvg('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5v1a3 3 0 0 0 3 3M16 6h3v1a3 3 0 0 1-3 3"/><path d="M12 13v4M9 20h6M10 17h4"/></svg>');
+function chevron(dir) {
+  const d = dir === 'down' ? 'M6 9l6 6 6-6' : 'M6 15l6-6 6 6';
+  const n = figma.createNodeFromSvg('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="' + d + '"/></svg>');
   n.fills = [];
   for (const v of n.findAll(() => true)) {
-    if ('strokes' in v && v.strokes.length) v.strokes = [P(C.iconDefault)];
+    if ('strokes' in v && v.strokes.length) v.strokes = [P(C.iconBrand)];
     if ('fills' in v && v.fills.length) v.fills = [];
     if ('constraints' in v) v.constraints = { horizontal: 'SCALE', vertical: 'SCALE' };
   }
   n.rescale(16 / 24);
-  n.name = 'Trophy icon';
+  n.name = 'Chevron';
   return n;
 }
+const clickTo = dest => [{ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'NODE', destinationId: dest.id, navigation: 'CHANGE_TO', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.15 }, preserveScrollPosition: false, resetVideoPosition: false }] }];
 
-// ---------- 1. Club entry component ----------
 const p1 = pageOf(/^01/);
 await p1.loadAsync();
 const set = p1.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Club entry');
-if (!set) throw new Error('Club entry not found');
-let key = Object.keys(set.componentPropertyDefinitions).find(k => /^Achievements#/.test(k));
+const keyOf = re => Object.keys(set.componentPropertyDefinitions).find(k => re.test(k));
+const achKey = keyOf(/^Achievements#/);
+if (!achKey) throw new Error('Achievements property missing, run 127 first');
+let moreKey = keyOf(/^Achievements more#/);
+const V_ = (D, S) => set.children.find(c => c.variantProperties.Device === D && c.variantProperties.State === S);
 
-await step('Club entry · Achievements row', async () => {
-  if (!key) key = set.addComponentProperty('Achievements', 'BOOLEAN', false);
+// ---------- 1. acici (toggle) Default ve Hover varyantlarina ----------
+await step('toggle in Default / Hover', async () => {
+  if (!moreKey) moreKey = set.addComponentProperty('Achievements more', 'BOOLEAN', false);
   const out = [];
   for (const c of set.children) {
-    const details = c.findOne(n => n.name === 'Club details');
-    if (details.findOne(n => n.name === 'Achievements')) { out.push(c.name + ': exists'); continue; }
-    const row = figma.createFrame();
-    row.name = 'Achievements';
-    row.layoutMode = 'HORIZONTAL';
-    row.itemSpacing = 6;
-    row.counterAxisAlignItems = 'MIN';
-    row.paddingTop = 4;
-    row.fills = [];
-    details.appendChild(row);
-    row.layoutSizingHorizontal = 'FILL';
-    row.layoutSizingVertical = 'HUG';
-    const ic = trophy();
-    row.appendChild(ic);
-    const t = figma.createText();
-    await t.setTextStyleIdAsync(sSmall.id);
-    t.characters = 'Youth league champions 2022/23';
-    t.fills = [P(C.textSecondary)];
-    t.name = 'Achievements text';
-    row.appendChild(t);
-    t.layoutSizingHorizontal = 'FILL';
-    t.textAutoResize = 'HEIGHT';
-    t.textTruncation = 'ENDING';
-    t.maxLines = c.variantProperties.Device === 'Mobile' ? 2 : 1;
-    // ikon metnin ilk satirinin ortasina
+    if (c.variantProperties.State === 'Expanded') continue;
+    const row = c.findOne(n => n.name === 'Achievements');
+    const t = row.findOne(n => n.name === 'Achievements text');
+    t.maxLines = 1;
+    if (row.findOne(n => n.name === 'More')) { out.push(c.name + ': exists'); continue; }
     const lh = t.lineHeight && t.lineHeight.unit === 'PIXELS' ? t.lineHeight.value : 20;
-    ic.y = 0;
-    row.paddingTop = 4;
-    const icWrap = figma.createFrame();
-    icWrap.name = 'Icon';
-    icWrap.fills = [];
-    icWrap.resize(16, lh);
-    icWrap.layoutMode = 'HORIZONTAL';
-    icWrap.counterAxisAlignItems = 'CENTER';
-    row.insertChild(0, icWrap);
-    icWrap.appendChild(ic);
-    icWrap.layoutSizingHorizontal = 'FIXED'; icWrap.layoutSizingVertical = 'FIXED';
-    row.componentPropertyReferences = { visible: key };
-    out.push(c.name + ': added, line height ' + lh);
+    const more = figma.createFrame();
+    more.name = 'More';
+    more.layoutMode = 'HORIZONTAL';
+    more.counterAxisAlignItems = 'CENTER';
+    more.itemSpacing = 2;
+    more.fills = [];
+    row.appendChild(more);
+    const lt = figma.createText();
+    await lt.setTextStyleIdAsync(sLabel.id);
+    lt.characters = '+1';
+    lt.fills = [P(C.textBrand)];
+    lt.name = 'Count';
+    more.appendChild(lt);
+    more.appendChild(chevron('down'));
+    more.layoutSizingHorizontal = 'HUG';
+    more.resize(more.width, lh);
+    more.layoutSizingVertical = 'FIXED';
+    more.componentPropertyReferences = { visible: moreKey };
+    out.push(c.name + ': toggle added');
   }
-  set.description = 'One club in the career list, with hover state. Achievements row: from careers.achievements, shown only when the field has text (turn on the Achievements property). Several achievements are joined with " · ". Desktop: one line, mobile: up to two lines, then an ellipsis. Empty field: the row is not shown and the entry keeps its normal height.';
-  report.info.component = out;
-  report.info.key = key;
+  report.info.toggle = out;
 });
 
-// ---------- 2. Profil sayfalari ----------
+// ---------- 2. Expanded varyantlari ----------
+await step('Expanded variants', async () => {
+  const out = [];
+  for (const D of ['Desktop', 'Mobile']) {
+    let ex = V_(D, 'Expanded');
+    if (!ex) {
+      ex = V_(D, 'Default').clone();
+      set.appendChild(ex);
+      ex.name = 'Device=' + D + ', State=Expanded';
+      await ex.setReactionsAsync([]);
+      const t = ex.findOne(n => n.name === 'Achievements text');
+      t.textTruncation = 'DISABLED';
+      t.maxLines = null;
+      const more = ex.findOne(n => n.name === 'More');
+      const lt = more.findOne(n => n.name === 'Count');
+      await loadFonts(lt);
+      lt.characters = 'Less';
+      more.findOne(n => n.name === 'Chevron').remove();
+      more.appendChild(chevron('up'));
+      out.push(D + ': created');
+    } else out.push(D + ': exists');
+    // tiklama baglantilari
+    await ex.findOne(n => n.name === 'More').setReactionsAsync(clickTo(V_(D, 'Default')));
+    for (const S of ['Default', 'Hover']) await V_(D, S).findOne(n => n.name === 'More').setReactionsAsync(clickTo(ex));
+  }
+  set.description = 'One club in the career list, with hover state. Achievements row: from careers.achievements, one achievement per line, shown only when the field has text (turn on Achievements). Collapsed: the first achievement on one line, cut with an ellipsis; if there are more, a "+N" toggle (turn on Achievements more, N = the number of further lines). Clicking it opens the entry in place (State=Expanded) with every achievement on its own line and a "Less" toggle. One achievement that fits: no toggle. Empty field: no row, normal height.';
+  report.info.expanded = out;
+});
+
+// ---------- 3. profillerdeki veriler ----------
 const web = pageOf(/^02/);
 await web.loadAsync();
 const oldH = new Map();
 for (const s of web.children.filter(n => n.type === 'SECTION')) for (const k of s.children) oldH.set(k.id, k.height);
 
 const ACH = {
-  leo: { 1: 'U19 league champions 2022/23 · Club young player of the year 2023' },
-  n15: { 0: 'Promoted to Second Division 2024/25 · Club player of the season 2024/25 · Captain since January 2025 · Most assists in the squad 2023/24' },
+  leo: { 1: ['U19 league champions 2022/23', 'Club young player of the year 2023'] },
+  n15: { 0: ['Promoted to Second Division 2024/25', 'Club player of the season 2024/25', 'Captain since January 2025', 'Most assists in the squad 2023/24'] },
   n914: {}
 };
 const achFor = name => /9–14/.test(name) ? ACH.n914 : /15\+/.test(name) ? ACH.n15 : ACH.leo;
@@ -102,26 +119,28 @@ for (const f of web.findAll(n => n.type === 'FRAME' && /^Profiles \/ Player/.tes
   await step('profile · ' + f.name, async () => {
     const list = f.findOne(n => n.name === 'Club entries');
     const map = achFor(f.name);
+    const out = [];
     const entries = list.children.filter(k => k.type === 'INSTANCE');
-    const desc = [];
     for (let i = 0; i < entries.length; i++) {
-      const e = entries[i];
-      const txt = map[i];
-      e.setProperties({ [key]: !!txt });
-      if (txt) {
-        const t = e.findOne(n => n.name === 'Achievements text');
-        await loadFonts(t);
-        t.characters = txt;
+      const e = entries[i], items = map[i];
+      e.setProperties({ [achKey]: !!items, [moreKey]: !!(items && items.length > 1) });
+      if (!items) continue;
+      const t = e.findOne(n => n.name === 'Achievements text');
+      await loadFonts(t);
+      t.characters = items.join('\n');
+      if (items.length > 1) {
+        const c = e.findOne(n => n.name === 'Count');
+        await loadFonts(c);
+        c.characters = '+' + (items.length - 1);
       }
-      const nm = e.findOne(n => n.name === 'Club name'), dt = e.findOne(n => n.name === 'Dates');
-      desc.push(i + ' ' + (nm ? nm.characters : '?') + ' ' + (dt ? dt.characters : '') + (txt ? ' + achievements' : ''));
+      out.push(i + ': ' + items.length + ' items');
     }
-    pages.push(f.name + ' (' + r(oldH.get(f.id)) + ' -> ' + r(f.height) + '): ' + desc.join(' | '));
+    pages.push(f.name + ': ' + (out.join(', ') || 'none') + ' (' + r(oldH.get(f.id)) + ' -> ' + r(f.height) + ')');
   });
 }
 report.info.pages = pages;
 
-// ---------- 3. alttakileri it ----------
+// ---------- 4. alttakileri it ----------
 await step('push rows below grown frames', async () => {
   const moved = [];
   for (const s of web.children.filter(n => n.type === 'SECTION')) {
@@ -147,7 +166,7 @@ await step('push rows below grown frames', async () => {
   report.info.moved = moved;
 });
 
-// ---------- 4. sekme 01 duzen ----------
+// ---------- 5. sekme 01 duzen ----------
 function relayout(s) {
   const kids = s.children.slice();
   const ordered = kids.filter(n => n.type === 'TEXT').concat(kids.filter(n => n.type !== 'TEXT'));
