@@ -1,67 +1,57 @@
-// step 137 · Mobil hero sekmeleri 3 slaytta ayni yukseklikte (slayt 3 buton kutusu kisalir) · achievements ilk satir max genisligi sayfadaki gercek satirlardan
+// step 138 · inspect (salt okunur): About kartinin kapali hali neden 4 satirda kesilmiyor. Component varyantlari + sayfadaki her About instance
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const pageOf = re => figma.root.children.find(p => re.test(p.name));
-
 const p01 = pageOf(/^01/), p02 = pageOf(/^02/);
 await p01.loadAsync(); await p02.loadAsync();
 
-// ---------- 1. Mobile hero tabs aligned ----------
-await step('mobile hero tabs', async () => {
-  const set = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Hero slide');
-  const mob = set.children.filter(c => c.variantProperties && c.variantProperties.Device === 'Mobile');
-  const tabY = v => { const t = v.findOne(n => n.name === 'Hero tabs'); return t.absoluteBoundingBox.y - v.absoluteBoundingBox.y; };
-  // natural height of Actions = its buttons stacked; target = lowest tabs position any slide needs
-  const rows = mob.map(v => {
-    const a = v.findOne(n => n.name === 'Actions' && n.type === 'FRAME');
-    const btns = a.children.filter(n => n.type === 'INSTANCE' && n.visible);
-    const natural = a.layoutMode === 'VERTICAL' ? btns.reduce((s, b) => s + b.height, 0) + a.itemSpacing * Math.max(0, btns.length - 1) : Math.max(...btns.map(b => b.height));
-    return { v, a, natural, slack: a.height - natural };
-  });
-  const target = Math.max(...rows.map(r => tabY(r.v) - r.slack));
-  report.info.tabsTarget = Math.round(target);
-  report.info.tabs = [];
-  for (const r of rows) {
-    const h = r.a.height - (tabY(r.v) - target);
-    if (h < r.natural - 0.5) throw new Error(r.v.name + ': would squeeze buttons');
-    r.a.resize(r.a.width, Math.round(h));
-    report.info.tabs.push(r.v.name + ': actions ' + Math.round(r.a.height) + ', tabs y ' + Math.round(tabY(r.v)));
+async function textInfo(t) {
+  if (!t) return null;
+  const lh = t.lineHeight === figma.mixed ? 'mixed' : (t.lineHeight.unit === 'AUTO' ? 'AUTO' : t.lineHeight.value + t.lineHeight.unit);
+  let style = null;
+  if (typeof t.textStyleId === 'string' && t.textStyleId) { const s = await figma.getStyleByIdAsync(t.textStyleId); style = s ? s.name : '?'; }
+  else if (t.textStyleId === figma.mixed) style = 'mixed';
+  return {
+    w: Math.round(t.width), h: Math.round(t.height),
+    autoResize: t.textAutoResize, truncation: t.textTruncation, maxLines: t.maxLines,
+    sizing: t.layoutSizingHorizontal + '/' + t.layoutSizingVertical,
+    maxWidth: t.maxWidth, maxHeight: t.maxHeight,
+    lineHeight: lh, style,
+    paragraphSpacing: t.paragraphSpacing,
+    chars: t.characters.length,
+    newlines: (t.characters.match(/\n/g) || []).length,
+    start: t.characters.slice(0, 50)
+  };
+}
+
+await step('component variants', async () => {
+  const set = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'About');
+  if (!set) throw new Error('About set missing');
+  report.info.variants = [];
+  for (const v of set.children) {
+    const content = v.findOne(n => n.name === 'About content');
+    report.info.variants.push({
+      name: v.name, w: Math.round(v.width), h: Math.round(v.height),
+      content: content ? { w: Math.round(content.width), h: Math.round(content.height), sizing: content.layoutSizingHorizontal + '/' + content.layoutSizingVertical, clip: content.clipsContent } : null,
+      text: await textInfo(v.findOne(n => n.name === 'About text' && n.type === 'TEXT'))
+    });
   }
 });
 
-// ---------- 2. Achievements max width from real rows on the pages ----------
-await step('achievements max width', async () => {
-  const setCE = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Club entry');
-  const room = { Desktop: Infinity, Mobile: Infinity };
-  const seen = { Desktop: 0, Mobile: 0 };
-  const inst = p02.findAll(n => n.type === 'INSTANCE' && !!n.findOne(c => c.name === 'Achievements first'));
+await step('page instances', async () => {
+  const inst = p02.findAll(n => n.type === 'INSTANCE' && !!n.findOne(c => c.name === 'About text'));
+  report.info.instances = [];
   for (const i of inst) {
-    const dev = i.variantProperties && i.variantProperties.Device;
-    if (!dev || !(dev in room)) continue;
-    const ach = i.findOne(c => c.name === 'Achievements');
-    const icon = ach && ach.findOne(c => c.name === 'Icon');
-    const more = ach && ach.findOne(c => c.name === 'More');
-    if (!ach || !ach.visible) continue;
-    const r = ach.width - (icon ? icon.width : 16) - (more ? more.width : 0) - ach.itemSpacing * 2;
-    if (r < room[dev]) room[dev] = r;
-    seen[dev]++;
+    let top = i; while (top.parent && top.parent.type !== 'SECTION' && top.parent.type !== 'PAGE') top = top.parent;
+    const more = i.findOne(c => c.name === 'Show more');
+    report.info.instances.push({
+      page: top.name, variant: i.variantProperties, visible: i.visible,
+      w: Math.round(i.width), h: Math.round(i.height),
+      showMoreVisible: more ? more.visible : null,
+      text: await textInfo(i.findOne(c => c.name === 'About text' && c.type === 'TEXT'))
+    });
   }
-  report.info.rowsMeasured = seen;
-  report.info.room = { Desktop: Math.floor(room.Desktop), Mobile: Math.floor(room.Mobile) };
-  for (const v of setCE.children) {
-    const dev = v.variantProperties.Device;
-    if (v.variantProperties.State === 'Expanded' || !isFinite(room[dev])) continue;
-    const first = v.findOne(n => n.name === 'Achievements first');
-    if (first) first.maxWidth = Math.floor(room[dev]);
-  }
-  // report how each row now looks
-  report.info.rows = inst.filter(i => i.variantProperties && i.variantProperties.State !== 'Expanded').map(i => {
-    const ach = i.findOne(c => c.name === 'Achievements');
-    if (!ach || !ach.visible) return null;
-    const f = i.findOne(c => c.name === 'Achievements first');
-    return i.variantProperties.Device + ' · "' + f.characters.slice(0, 30) + '" w ' + Math.round(f.width) + ' / max ' + f.maxWidth;
-  }).filter(Boolean);
 });
 
 return report;
