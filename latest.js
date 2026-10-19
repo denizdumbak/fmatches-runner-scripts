@@ -1,4 +1,4 @@
-// step 150 · madde 8 kalanlari: Club entry'ye Kind (Club / Organization) varyanti, Sofia ve Ana kariyer satiri kurum ikonuyla, Intermediary "Current" cipi 3. yuvaya, Manager directory sayfasi (masaustu + mobil), rol sayfalarina giris oklari, Start here'a satir
+// step 150 · madde 8 kalanlari (giris oku etiketleri faz numarasiz): Club entry'ye Kind (Club / Organization) varyanti, Sofia ve Ana kariyer satiri kurum ikonuyla, Intermediary "Current" cipi 3. yuvaya, Manager directory sayfasi (masaustu + mobil), rol sayfalarina giris oklari, Start here'a satir
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -199,7 +199,8 @@ await step('manager directory', async () => {
 });
 
 // ---------- 5. Giris oklari ----------
-const ENTRY = { 'Manager': 'From search or club staff · Phase 6', 'Intermediary': 'From search · Phase 6', 'Referee': 'From search · Phase 6', 'Football fan': 'From My contacts · Phase 5' };
+const ENTRY = { 'Manager': 'From search results or club staff · not drawn yet', 'Intermediary': 'From search results · not drawn yet', 'Referee': 'From search results · not drawn yet', 'Football fan': 'From My contacts · not drawn yet' };
+const PLAYER_ENTRY = 'From player search · not drawn yet';
 await step('entry arrows', async () => {
   const out = [];
   for (const [sec, dev] of [[web, 'Desktop'], [mob, 'Mobile']]) {
@@ -207,6 +208,7 @@ await step('entry arrows', async () => {
     for (const old of sub.children.filter(c => /^Flow · Entry · /.test(c.name))) old.remove();
     const srcArrow = subOf(sec, 'Profiles · player').children.find(c => c.name === 'Flow · From player search');
     const srcFrame = subOf(sec, 'Profiles · player').children.find(c => c.name === 'Profiles / Player · ' + dev);
+    for (const tx of srcArrow.findAll(n => n.type === 'TEXT')) { await setText(tx, PLAYER_ENTRY); tx.name = PLAYER_ENTRY; }
     const dx = srcArrow.x - srcFrame.x, gap = srcFrame.y - (srcArrow.y + srcArrow.height);
     for (const role of ROLES) {
       const f = sub.children.find(c => c.type === 'FRAME' && c.name === 'Profiles / ' + role + ' · ' + dev);
