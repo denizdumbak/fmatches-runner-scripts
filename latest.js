@@ -1,78 +1,138 @@
-// step 152 · bos sol sutun gizlenir, Career tam genislik (Manager directory masaustu) + kural notu · Organization kariyer satirinda ikon kutusu bg/subtle
+// step 153 · inspect (salt okunur): form parcalari icin referanslar · Header arama alani, Log out dialog, Filter chip, Account menu, Button, Positions sahasi, stiller
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const pageOf = re => figma.root.children.find(p => re.test(p.name));
 const p01 = pageOf(/^01/), p02 = pageOf(/^02/);
 await p01.loadAsync(); await p02.loadAsync();
-const R = v => Math.round(v);
-const setOf = name => p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === name);
+
 const allVars = await figma.variables.getLocalVariablesAsync();
-const V = name => { const v = allVars.find(x => x.name === name); if (!v) throw new Error('variable missing: ' + name); return v; };
-const P = v => figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: .5, g: .5, b: .5 } }, 'color', v);
-async function loadFonts(n) { for (const seg of n.getStyledTextSegments(['fontName'])) await figma.loadFontAsync(seg.fontName); }
-const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web');
-const mob = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
-const SUB = 'Profiles · other roles';
-const subOf = (sec, name) => sec.children.find(n => n.type === 'SECTION' && n.name === name);
+const varName = {}; for (const v of allVars) varName[v.id] = v.name;
+const styleName = {};
+for (const s of await figma.getLocalTextStylesAsync()) styleName[s.id] = s.name;
+for (const s of await figma.getLocalEffectStylesAsync()) styleName[s.id] = s.name;
 
-// ---------- 1. Bos sol sutun ----------
-await step('empty left column', async () => {
-  const out = [];
-  const frames = p02.findAll(n => n.type === 'FRAME' && /^Profiles \//.test(n.name) && /· Desktop$/.test(n.name));
-  for (const f of frames) {
-    const left = f.findOne(n => n.name === 'Left column');
-    if (!left) continue;
-    const visible = left.children.filter(c => c.visible);
-    if (visible.length) continue;
-    const right = left.parent.children.find(c => c.name === 'Right column');
-    const h0 = f.height;
-    left.remove();
-    if (right) right.layoutSizingHorizontal = 'FILL';
-    out.push(f.name + ' · right ' + (right ? R(right.width) : 'missing') + ' · h ' + R(h0) + ' → ' + R(f.height));
+function paintInfo(paints, bound) {
+  if (!paints || paints === figma.mixed || !paints.length) return '';
+  return paints.filter(p => p.visible !== false).map(p => {
+    if (p.boundVariables && p.boundVariables.color) return varName[p.boundVariables.color.id] || 'var?';
+    if (p.type === 'SOLID') { const c = p.color; return '#' + [c.r, c.g, c.b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('') + (p.opacity !== undefined && p.opacity < 1 ? '@' + p.opacity.toFixed(2) : ''); }
+    return p.type;
+  }).join('+');
+}
+function boundNum(n, key) { const b = n.boundVariables && n.boundVariables[key]; return b ? varName[b.id] : null; }
+
+function line(n, depth) {
+  const r = [];
+  r.push('  '.repeat(depth) + n.type.slice(0, 4) + ' "' + n.name + '"');
+  r.push(Math.round(n.width) + 'x' + Math.round(n.height));
+  if (n.visible === false) r.push('HIDDEN');
+  if (n.layoutPositioning === 'ABSOLUTE') r.push('ABS');
+  if (n.layoutMode && n.layoutMode !== 'NONE') {
+    r.push(n.layoutMode[0] + (n.layoutWrap === 'WRAP' ? 'W' : '') + ' gap ' + n.itemSpacing + (boundNum(n, 'itemSpacing') ? '(' + boundNum(n, 'itemSpacing') + ')' : ''));
+    r.push('pad ' + [n.paddingTop, n.paddingRight, n.paddingBottom, n.paddingLeft].join('/'));
+    r.push('align ' + n.primaryAxisAlignItems + '/' + n.counterAxisAlignItems);
   }
-  report.info.leftColumn = out.length ? out : 'none empty';
+  if ('layoutSizingHorizontal' in n) r.push('size ' + n.layoutSizingHorizontal[0] + '/' + n.layoutSizingVertical[0]);
+  if ('cornerRadius' in n && n.cornerRadius !== 0) r.push('r ' + (n.cornerRadius === figma.mixed ? 'mixed' : n.cornerRadius) + (boundNum(n, 'topLeftRadius') ? '(' + boundNum(n, 'topLeftRadius') + ')' : ''));
+  const f = paintInfo(n.fills); if (f) r.push('fill ' + f);
+  const s = paintInfo(n.strokes); if (s) r.push('stroke ' + s + ' ' + (n.strokeWeight === figma.mixed ? 'mixed' : n.strokeWeight) + (n.strokeAlign ? n.strokeAlign[0] : ''));
+  if (n.effectStyleId) r.push('fx ' + (styleName[n.effectStyleId] || '?'));
+  if (n.type === 'TEXT') {
+    r.push('ts ' + (n.textStyleId === figma.mixed ? 'mixed' : (styleName[n.textStyleId] || 'NONE')));
+    r.push('"' + n.characters.slice(0, 40).replace(/\n/g, '⏎') + '"');
+  }
+  if (n.type === 'INSTANCE' && n.componentProperties) {
+    r.push('props {' + Object.entries(n.componentProperties).map(([k, v]) => k.replace(/#.*/, '') + '=' + v.value).join(', ') + '}');
+  }
+  if (n.reactions && n.reactions.length) r.push('reactions ' + n.reactions.length);
+  return r.join(' · ');
+}
+function tree(n, depth, maxDepth, intoInstances, out) {
+  out.push(line(n, depth));
+  if (depth >= maxDepth || !('children' in n)) return;
+  if (n.type === 'INSTANCE' && !intoInstances) return;
+  for (const c of n.children) tree(c, depth + 1, maxDepth, intoInstances, out);
+}
+const dump = (n, maxDepth, intoInstances) => { const out = []; tree(n, 0, maxDepth, intoInstances, out); return out; };
+const findSet = name => p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === name);
+const defs = set => Object.entries(set.componentPropertyDefinitions).map(([k, d]) => k + ':' + d.type + (d.variantOptions ? '[' + d.variantOptions.join('|') + ']' : '=' + d.defaultValue));
+
+// 1. Header arama alani (input dili buradan gelecek)
+await step('header search', async () => {
+  const h = await figma.getNodeByIdAsync('63:333');
+  const v = h.children.find(c => /Desktop/.test(c.name) && /Logged in/.test(c.name)) || h.children[0];
+  const search = v.findOne(n => /search/i.test(n.name) && n.type !== 'TEXT' && n.width > 200);
+  report.info.headerVariant = v.name;
+  report.info.headerSearch = search ? dump(search, 4, true) : 'not found';
 });
 
-await step('rule note', async () => {
-  const note = subOf(web, SUB).children.find(c => c.type === 'TEXT' && c.name === 'Note · Other roles');
-  if (!note) { report.info.note = 'note not found'; return; }
-  if (note.characters.indexOf('left column') >= 0) { report.info.note = 'already done'; return; }
-  await loadFonts(note);
-  note.insertCharacters(note.characters.length, '\nIf the left column has no cards (directory profile without links), it is hidden and the right column takes the full width.', 'BEFORE');
-  report.info.note = 'added · h ' + R(note.height);
+// 2. Log out dialog (kaydetmeden cikma uyarisinin kalibi)
+await step('log out dialog', async () => {
+  const set = findSet('Log out dialog') || p01.findOne(n => /Log out dialog/.test(n.name) && (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT'));
+  report.info.dialogType = set.type;
+  report.info.dialogDefs = set.type === 'COMPONENT_SET' ? defs(set) : [];
+  const first = set.type === 'COMPONENT_SET' ? set.children.find(c => /Desktop/.test(c.name)) || set.children[0] : set;
+  report.info.dialog = dump(first, 4, false);
 });
 
-// ---------- 2. Organization ikon kutusu ----------
-await step('org icon box fill', async () => {
-  const set = setOf('Club entry');
-  const out = [];
-  for (const v of set.children.filter(c => /Kind=Organization/.test(c.name))) {
-    const box = v.findOne(n => n.name === 'Organization icon');
-    if (!box) { out.push(v.name + ' · no box'); continue; }
-    box.fills = [P(V('color/bg/subtle'))];
-    out.push(v.name.replace('Kind=Organization, ', '') + ' ' + R(box.width) + 'x' + R(box.height) + ' r' + box.topLeftRadius);
-  }
-  report.info.orgBox = out;
+// 3. Filter chip (uyruk cipleri, segmented control)
+await step('filter chip', async () => {
+  const set = await figma.getNodeByIdAsync('69:800');
+  report.info.chipDefs = defs(set);
+  report.info.chipVariants = set.children.map(c => c.name);
+  report.info.chip = set.children.slice(0, 3).flatMap(c => dump(c, 3, false));
 });
 
-// ---------- 3. Alt Section boyu ----------
-await step('resize sections', async () => {
-  const out = [];
-  for (const sec of [web, mob]) {
-    const sub = subOf(sec, SUB);
-    let r = 0, b = 0;
-    for (const c of sub.children) { r = Math.max(r, c.x + c.width); b = Math.max(b, c.y + c.height); }
-    sub.resizeWithoutConstraints(Math.max(sub.width, Math.ceil(r + 80)), Math.ceil(b + 80));
-    out.push(sec.name + ' sub ' + R(sub.width) + 'x' + R(sub.height));
-    const subs = sec.children.filter(c => c.type === 'SECTION');
-    for (let i = 0; i < subs.length; i++) for (let j = i + 1; j < subs.length; j++) {
-      const a = subs[i], z = subs[j];
-      if (a.x < z.x + z.width && z.x < a.x + a.width && a.y < z.y + z.height && z.y < a.y + a.height) out.push('OVERLAP ' + a.name + ' / ' + z.name);
-    }
-  }
-  if (!out.some(s => /OVERLAP/.test(s))) out.push('overlaps: none');
-  report.info.sizes = out;
+// 4. Account menu (dropdown / autocomplete listesinin kalibi)
+await step('account menu', async () => {
+  const set = findSet('Account menu');
+  report.info.menuDefs = defs(set);
+  const v = set.children.find(c => /Desktop|280/.test(c.name)) || set.children[0];
+  report.info.menu = dump(v, 2, false);
+  const row = findSet('Menu row');
+  if (row) { report.info.menuRowDefs = defs(row); report.info.menuRow = dump(row.children[0], 3, false); }
+});
+
+// 5. Button ve Tag ozellikleri
+await step('button + tag', async () => {
+  const b = await figma.getNodeByIdAsync('8:10');
+  report.info.buttonDefs = defs(b);
+  const prim = b.children.find(c => /Primary/.test(c.name) && /Default/.test(c.name)) || b.children[0];
+  report.info.buttonPrimary = dump(prim, 2, false);
+  const t = await figma.getNodeByIdAsync('63:111');
+  report.info.tagDefs = defs(t);
+  report.info.tag = dump(t.children[0], 2, false);
+});
+
+// 6. Positions karti ve saha (mevki secicinin tabani)
+await step('positions', async () => {
+  const prof = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player · Desktop');
+  report.info.profileFound = !!prof;
+  const card = prof.findOne(n => n.type === 'FRAME' && /^Positions/.test(n.name));
+  report.info.positions = dump(card, 3, false);
+  const pitch = card.findOne(n => n.name === 'Pitch');
+  if (pitch) report.info.pitch = dump(pitch, 3, true).slice(0, 40);
+});
+
+// 7. Kart basligi kalibi (kalem ikonu nereye oturacak) · Career Section heading
+await step('section heading', async () => {
+  const prof = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player · Desktop');
+  const head = prof.findOne(n => n.name === 'Section heading');
+  report.info.sectionHeading = head ? dump(head, 3, false) : 'not found';
+});
+
+// 8. Stil ve degisken envanteri (form icin gerekenler)
+await step('styles', async () => {
+  report.info.textStyles = (await figma.getLocalTextStylesAsync()).map(s => s.name + ' ' + s.fontSize + '/' + (s.lineHeight.unit === 'PIXELS' ? s.lineHeight.value : 'auto')).filter(x => /^(Body|Label|Heading\/H4|Heading\/H3|Eyebrow)/.test(x));
+  report.info.effectStyles = (await figma.getLocalEffectStylesAsync()).map(s => s.name);
+  report.info.colorVars = allVars.filter(v => /^color\//.test(v.name)).map(v => v.name);
+  report.info.icons = (await figma.getNodeByIdAsync('63:88')).componentPropertyDefinitions;
+});
+
+// 9. 01 Section listesi ve konumlari (5 · Forms nereye girecek)
+await step('sections 01', async () => {
+  report.info.sections01 = p01.children.filter(n => n.type === 'SECTION').map(s => s.name + ' x' + Math.round(s.x) + ' y' + Math.round(s.y) + ' ' + Math.round(s.width) + 'x' + Math.round(s.height));
 });
 
 return report;
