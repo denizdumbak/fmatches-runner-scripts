@@ -1,4 +1,4 @@
-// step 174 · Own profile / Edit gallery (Desktop + Mobile): gri kutuda 3 sutunlu kare izgara, her fotoda x (sil), sonda kesik cerceveli Add photos karesi, surukle-sirala notu, Cancel · Save · ok (masaustu soldan, mobil alttan), prototip · Section duzeni ve kontrol
+// step 175 · Own profile oklari: hedefler tiklanan ogenin tarafina (sol kartlar solda, sag kartlar sagda), oklar en yakin kenardan ic ice, kesismesiz · form acikken obur kartlarin Edit'i gizli · galeri x notu · kesisme sayimi · Section duzeni
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -97,90 +97,109 @@ async function actions(parent) {
 const hex = p => p && p.color ? '#' + [p.color.r, p.color.g, p.color.b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('') : '-';
 
 
-// bagli boyalar dugum agaca eklenmeden once verilir (169: sonradan verilince yer tutucu gri kaliyor)
-function tileBase(name, w) { const t = figma.createFrame(); t.name = name; t.fills = []; t.clipsContent = false; t.resize(w, w); return t; }
-async function galleryBox(desk, photos, cardInner, heroFill) {
-  const form = frame('Gallery form', 'VERTICAL'); form.fills = REF.fills; GAP(form, 'spacing/md');
-  for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) form.setBoundVariable(c, V('radius/md'));
-  PAD(form, 'spacing/md', 'spacing/md', 'spacing/md', 'spacing/md');
-  const th = Math.floor((cardInner - 32 - 16) / 3);
-  const grid = frame('Gallery grid', 'HORIZONTAL'); grid.layoutWrap = 'WRAP'; GAP(grid, 'spacing/xs'); grid.setBoundVariable('counterAxisSpacing', V('spacing/xs'));
-  for (const p of photos) {
-    const tile = tileBase('Tile · ' + p.name, th);
-    const ph = p.clone(); tile.appendChild(ph); ph.x = 0; ph.y = 0; ph.resize(th, th);
-    const rm = figma.createFrame(); rm.name = 'Remove'; rm.fills = heroFill; rm.resize(32, 32); rm.cornerRadius = 999;
-    rm.layoutMode = 'HORIZONTAL'; rm.primaryAxisSizingMode = 'FIXED'; rm.counterAxisSizingMode = 'FIXED'; rm.primaryAxisAlignItems = 'CENTER'; rm.counterAxisAlignItems = 'CENTER';
-    rm.appendChild(icon('Icon · Remove', 'x', 16, 'color/icon/default'));
-    tile.appendChild(rm); rm.x = th - 32 - 4; rm.y = 4;
-    grid.appendChild(tile);
-  }
-  const add = figma.createFrame(); add.name = 'Add photos'; add.fills = heroFill;
-  add.strokes = [P(V('color/border/strong'))]; add.strokeWeight = 1.5; add.dashPattern = [6, 6]; add.strokeAlign = 'INSIDE';
-  add.layoutMode = 'VERTICAL'; add.primaryAxisSizingMode = 'FIXED'; add.counterAxisSizingMode = 'FIXED'; add.resize(th, th);
-  add.primaryAxisAlignItems = 'CENTER'; add.counterAxisAlignItems = 'CENTER'; add.itemSpacing = 4;
-  for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) add.setBoundVariable(c, V('radius/md'));
-  add.appendChild(icon('Icon · Add', 'plus', 20, 'color/icon/brand'));
-  add.appendChild(await txt('Label', `Add photos`, 'Label/Small', 'color/text/brand'));
-  grid.appendChild(add);
-  form.appendChild(grid); grid.layoutSizingHorizontal = 'FILL';
-  const hint = await txt('Hint', `Drag a photo to change the order. The first six show on your profile.`, 'Label/Small', 'color/text/secondary');
-  form.appendChild(hint); hint.layoutSizingHorizontal = 'FILL'; hint.textAutoResize = 'HEIGHT';
-  await actions(form);
-  return { form, th };
+const KINDS = ['details', 'career', 'positions', 'about', 'links', 'gallery'];
+async function aboutInst(page) {
+  for (const i of page.findAll(n => n.type === 'INSTANCE')) { const m = await i.getMainComponentAsync(); if (m && m.parent && m.parent.type === 'COMPONENT_SET' && m.parent.name === 'About') return i; }
+  return null;
 }
-
+async function source(own, k) {
+  // tiklanan buton ve karti
+  if (k === 'details') { const b = own.findOne(n => n.name === 'Edit details'); return { btn: b, card: null }; }
+  let card = null;
+  if (k === 'career') card = own.findOne(n => n.name === 'Club entries').parent;
+  if (k === 'positions') card = own.findOne(n => n.type === 'FRAME' && n.name === 'Positions');
+  if (k === 'links') card = own.findOne(n => n.name === 'Link list').parent;
+  if (k === 'gallery') card = own.findOne(n => n.name === 'Gallery grid').parent;
+  if (k === 'about') { card = await aboutInst(own); return { btn: card.findOne(n => n.type === 'INSTANCE' && /^Edit/.test(n.name) && n.visible), card }; }
+  return { btn: card.findOne(n => n.name === 'Card header').children.find(c => c.name === 'Edit'), card };
+}
+const TITLE = { details: 'Edit details', career: 'Edit on Career', positions: 'Edit on Positions', about: 'Edit on About', links: 'Edit on Links', gallery: 'Edit on Gallery' };
+const PATHS = {};
 const out = [];
 for (const D of ['Desktop', 'Mobile']) {
-  await step('edit gallery · ' + D, async () => {
-    const desk = D === 'Desktop';
+  await step('layout and arrows · ' + D, async () => {
+    const desk = D === 'Desktop', G = desk ? 480 : 360;
     const own = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player / Own profile · ' + D);
     const sub = own.parent;
-    const NAME = 'Profiles / Player / Own profile / Edit gallery · ' + D;
-    for (const n of sub.children.filter(c => c.name === NAME || c.name === 'Flow · Edit gallery · ' + D)) n.remove();
-    let right = 0; for (const k of sub.children) if (k.y < own.y + own.height && k.y + k.height > own.y) right = Math.max(right, k.x + k.width);
-    const f = own.clone(); sub.appendChild(f);
-    f.name = NAME; f.x = right + (desk ? 480 : 360); f.y = own.y;
-    for (const n of f.findAll(n => n.reactions && n.reactions.length)) await n.setReactionsAsync([]);
-
-    const grid = f.findOne(n => n.name === 'Gallery grid');
-    if (!grid) throw new Error('Gallery grid not found');
-    const card = grid.parent;
-    const photos = grid.children.filter(c => /^Photo /.test(c.name));
-    const hero = f.findOne(n => n.name === 'Hero · player identity');
-    const hdr = card.findOne(n => n.name === 'Card header');
-    const he = hdr && hdr.children.find(c => c.name === 'Edit'); if (he) he.visible = false;
-    const inner = card.width - card.paddingLeft - card.paddingRight;
-    const { form, th } = await galleryBox(desk, photos, inner, hero.fills);
-    card.insertChild(card.children.indexOf(grid), form); form.layoutSizingHorizontal = 'FILL';
-    grid.remove();
-
-    const ownGrid = own.findOne(n => n.name === 'Gallery grid');
-    const ownEdit = ownGrid.parent.findOne(n => n.name === 'Card header').children.find(c => c.name === 'Edit');
-    await ownEdit.setReactionsAsync([nav(f)]);
-    for (const b of form.findAll(n => /^Button · (Save|Cancel)$/.test(n.name))) await b.setReactionsAsync([nav(own)]);
-
-    const sb = sub.absoluteBoundingBox, bb = ownEdit.absoluteBoundingBox;
-    const bx = figma.createRectangle(); sub.appendChild(bx);
-    bx.name = 'Clicked'; bx.x = bb.x - sb.x - 4; bx.y = bb.y - sb.y - 4; bx.resize(bb.width + 8, bb.height + 8);
-    bx.fills = []; bx.strokes = [{ type: 'SOLID', color: BLUE }]; bx.strokeWeight = 3; bx.cornerRadius = 26;
-    const by = bx.y + bx.height / 2, tx = f.x + f.width / 2;
-    let pts, botY = 0, topY = 0;
-    if (desk) { topY = own.y - 500; const vx = own.x - 120; pts = [[bx.x, by], [vx, by], [vx, topY], [tx, topY], [tx, f.y]]; }
-    else {
-      let low = 0; for (const k of sub.children) if (k.type === 'FRAME' || k.type === 'GROUP') low = Math.max(low, k.y + k.height);
-      botY = low + 120; const vx = own.x + own.width + 220;
-      pts = [[bx.x + bx.width, by], [vx, by], [vx, botY], [tx, botY], [tx, f.y + f.height]];
+    for (const n of sub.children.filter(c => /^Flow · Edit (details|career|positions|about|links|gallery) · /.test(c.name) || /^Note · Gallery remove · /.test(c.name))) n.remove();
+    const T = {}; for (const k of KINDS) { T[k] = sub.children.find(c => c.name === 'Profiles / Player / Own profile / Edit ' + k + ' · ' + D); if (!T[k]) throw new Error('missing page ' + k); }
+    const sb = sub.absoluteBoundingBox, ob = own.absoluteBoundingBox;
+    const S = [];
+    for (const k of KINDS) { const s = await source(own, k); if (!s.btn) throw new Error('no button ' + k); const b = s.btn.absoluteBoundingBox; S.push({ k, btn: s.btn, card: s.card, b, side: (b.x + b.width / 2 - ob.x) < own.width / 2 ? 'L' : 'R' }); }
+    const L = S.filter(s => s.side === 'L').sort((a, z) => a.b.y - z.b.y), R = S.filter(s => s.side === 'R').sort((a, z) => a.b.y - z.b.y);
+    // yerlesim: own ortada, en alttaki tiklama en yakin hedef
+    const W = own.width, step_ = W + G;
+    const left0 = Math.min(own.x, ...KINDS.map(k => T[k].x));
+    const newOwnX = left0 + L.length * step_;
+    const dx = newOwnX - own.x;
+    for (const c of sub.children) if (!KINDS.some(k => c === T[k])) c.x += dx;
+    L.slice().reverse().forEach((s, i) => { T[s.k].x = own.x - (i + 1) * step_; T[s.k].y = own.y; });
+    R.slice().reverse().forEach((s, i) => { T[s.k].x = own.x + W + G + i * step_; T[s.k].y = own.y; });
+    // oklar: en ustteki tiklama en icteki dikey, en yuksek serit, en uzak hedef
+    const sbb = sub.absoluteBoundingBox;
+    const loc = r_ => ({ x: r_.x - sbb.x, y: r_.y - sbb.y, w: r_.width, h: r_.height });
+    PATHS[D] = [];
+    for (const [side, list] of [['L', L], ['R', R]]) {
+      const n = list.length;
+      for (let i = 0; i < n; i++) {
+        const s = list[i], f = T[s.k];
+        const b = loc(s.btn.absoluteBoundingBox);
+        const bx = figma.createRectangle(); sub.appendChild(bx);
+        bx.name = 'Clicked'; bx.x = b.x - 4; bx.y = b.y - 4; bx.resize(b.w + 8, b.h + 8);
+        bx.fills = []; bx.strokes = [{ type: 'SOLID', color: BLUE }]; bx.strokeWeight = 3; bx.cornerRadius = 26;
+        const d = 48 + 40 * i, vx = side === 'L' ? own.x - d : own.x + W + d;
+        const lane = own.y - 160 - 72 * (n - 1 - i);
+        const tx = f.x + f.width / 2, by = bx.y + bx.height / 2;
+        const pts = [];
+        const nearEdge = side === 'L' ? (bx.x - own.x < 200) : (own.x + W - (bx.x + bx.width) < 200);
+        if (nearEdge || !s.card) pts.push([side === 'L' ? bx.x : bx.x + bx.width, by], [vx, by]);
+        else { const cb = loc(s.card.absoluteBoundingBox); const gy = cb.y - 12, cx = bx.x + bx.width / 2; pts.push([cx, bx.y], [cx, gy], [vx, gy]); }
+        pts.push([vx, lane], [tx, lane], [tx, f.y]);
+        const { lab } = await elbow(sub, pts, 'From Own profile · ' + TITLE[s.k], 'Flow · Edit ' + s.k + ' · ' + D, [bx]);
+        lab.x = side === 'L' ? tx + 16 : tx - lab.width - 16; lab.y = lane - lab.height - 8;
+        PATHS[D].push({ k: s.k, pts });
+      }
     }
-    const { lab } = await elbow(sub, pts, 'Click Edit on Gallery · the card turns into its form', 'Flow · Edit gallery · ' + D, [bx]);
-    lab.x = f.x - lab.width - 24; lab.y = desk ? topY - lab.height - 8 : botY + 12;
-
-    let rr = 0, bb2 = 0; for (const k of sub.children) { rr = Math.max(rr, k.x + k.width); bb2 = Math.max(bb2, k.y + k.height); }
-    sub.resizeWithoutConstraints(Math.max(sub.width, Math.ceil(rr + 80)), Math.max(sub.height, Math.ceil(bb2 + 80)));
-    const rmN = form.findOne(n => n.name === 'Remove');
-    out.push(D + ' · at ' + r(f.x) + ' · card ' + r(card.width) + 'x' + r(card.height) + ' · photos ' + photos.length + ' · thumb ' + th + ' · fill ' + hex(form.fills[0]) + ' · remove ' + hex(rmN.fills[0]));
+    // galeri: x notu
+    const g = T.gallery;
+    const note = await txt('Note · Gallery remove · ' + D, `Developer note: the remove button (×) is 32 px on screen; give it a 44 px tap area.`, 'Label/Small', 'color/text/warning');
+    sub.appendChild(note); note.x = g.x; note.y = g.y + g.height + 80; note.textAutoResize = 'HEIGHT'; note.resize(Math.min(g.width, 400), note.height);
+    out.push(D + ' · left ' + L.map(s => s.k).join(', ') + ' · right ' + R.map(s => s.k).join(', ') + ' · own moved ' + r(dx));
   });
 }
-report.info.pages = out;
+report.info.layout = out;
+
+// ---------- form acikken obur duzenleme tetikleyicileri gizli ----------
+await step('hide other edits', async () => {
+  const cnt = [];
+  for (const D of ['Desktop', 'Mobile']) for (const k of KINDS) {
+    const f = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player / Own profile / Edit ' + k + ' · ' + D);
+    let c = 0;
+    for (const n of f.findAll(n => (n.type === 'INSTANCE' && (n.name === 'Edit' || n.name === 'Edit details' || n.name === 'Button · Change photo')) && n.visible)) { n.visible = false; c++; }
+    const ab = await aboutInst(f);
+    if (ab) for (const n of ab.findAll(n => n.type === 'INSTANCE' && /^Edit/.test(n.name) && n.visible)) { n.visible = false; c++; }
+    cnt.push(k[0] + (D === 'Desktop' ? 'D' : 'M') + c);
+  }
+  report.info.hiddenEdits = cnt.join(' ');
+});
+
+// ---------- kesisme sayimi ----------
+await step('crossings', async () => {
+  const res = [];
+  for (const D of ['Desktop', 'Mobile']) {
+    const segs = []; for (const p of PATHS[D]) for (let i = 1; i < p.pts.length; i++) segs.push({ k: p.k, a: p.pts[i - 1], b: p.pts[i] });
+    let x = 0; const hit = [];
+    for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
+      const s = segs[i], t = segs[j]; if (s.k === t.k) continue;
+      const sh = s.a[1] === s.b[1], th = t.a[1] === t.b[1]; if (sh === th) continue;
+      const H = sh ? s : t, V = sh ? t : s;
+      const hx0 = Math.min(H.a[0], H.b[0]), hx1 = Math.max(H.a[0], H.b[0]), vy0 = Math.min(V.a[1], V.b[1]), vy1 = Math.max(V.a[1], V.b[1]);
+      if (V.a[0] > hx0 && V.a[0] < hx1 && H.a[1] > vy0 && H.a[1] < vy1) { x++; hit.push(H.k + '×' + V.k); }
+    }
+    res.push(D + ' ' + x + (hit.length ? ' (' + hit.join(', ') + ')' : ''));
+  }
+  report.info.crossings = res;
+});
 
 await step('flow starts', async () => {
   const keep = [];
