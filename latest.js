@@ -1,4 +1,4 @@
-// step 169 · Edit positions formunun zemini duzelir (Career satir formundan kopya) · Own profile / Edit about (Desktop + Mobile): About karti yerinde form, Textarea, Cancel · Save · ok, prototip
+// step 170 · Own profile alt Section'lari 'Profiles · other roles' icinden cikar, Web ve Mobile'in dogrudan cocugu olur · Web tasiyorsa genisler, Mobile ve sagindakiler kayar · Profiles · other roles icerigine gore kuculur · ic ice Section kontrolu (tasma ve cakisma)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -80,119 +80,61 @@ function icon(name, key, size, color) {
 
 
 
-// zemin: bagli boya yeni dugumde yer tutucu griyle (#808080) kalabiliyor; Career satir formunun dolgusu kopyalanir (168)
-const REF = p02.findOne(n => n.name === 'Career row form');
-if (!REF) throw new Error('Career row form missing');
-const box = (f, desk) => {
-  f.fills = REF.fills;
-  for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) f.setBoundVariable(c, V('radius/md'));
-  const p = desk ? 'spacing/lg' : 'spacing/md'; PAD(f, p, p, p, p);
-};
-async function actions(parent) {
-  const acts = frame('Edit actions', 'HORIZONTAL'); parent.appendChild(acts); GAP(acts, 'spacing/sm');
-  acts.appendChild(await button('Subtle', 'Cancel')); acts.appendChild(await button('Primary', 'Save'));
-  acts.layoutSizingHorizontal = 'FILL'; acts.primaryAxisAlignItems = 'MAX'; acts.counterAxisAlignItems = 'CENTER';
-  return acts;
-}
-const hex = p => p && p.color ? '#' + [p.color.r, p.color.g, p.color.b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('') : '-';
 
-// ---------- A: Positions formu zemini ----------
-await step('positions fill', async () => {
-  const fx = p02.findAll(n => n.name === 'Positions form');
-  for (const f of fx) f.fills = REF.fills;
-  report.info.positionsFill = fx.length + ' forms · ' + fx.map(f => hex(f.fills[0])).join(', ');
+const BB = n => n.absoluteBoundingBox;
+function moveKeep(node, parent) { const b = BB(node), pb = BB(parent); parent.appendChild(node); node.x = b.x - pb.x; node.y = b.y - pb.y; }
+function fit(sec, pad) { let right = 0, bottom = 0; for (const k of sec.children) { right = Math.max(right, k.x + k.width); bottom = Math.max(bottom, k.y + k.height); } sec.resizeWithoutConstraints(Math.ceil(right + pad), Math.ceil(bottom + pad)); }
+const plat = name => p02.children.find(n => n.type === 'SECTION' && n.name === name);
+
+await step('move own profile out', async () => {
+  const log = [];
+  for (const P_ of ['Web', 'Mobile']) {
+    const ps = plat(P_);
+    const own = ps.findOne(n => n.type === 'SECTION' && n.name === 'Own profile');
+    if (!own) { log.push(P_ + ': no Own profile'); continue; }
+    const was = own.parent;
+    if (was !== ps) {
+      moveKeep(own, ps);
+      if (was.type === 'SECTION') { const before = r(was.width) + 'x' + r(was.height); fit(was, 80); log.push(P_ + ': moved out of ' + was.name + ' (' + before + ' -> ' + r(was.width) + 'x' + r(was.height) + ')'); }
+    } else log.push(P_ + ': already direct child');
+    // Own profile, kardes alt Section'larin altinda, en az 160 bosluk
+    let maxBottom = 0; for (const k of ps.children) if (k !== own && k.type === 'SECTION') maxBottom = Math.max(maxBottom, k.y + k.height);
+    if (own.y < maxBottom + 160) own.y = maxBottom + 160;
+    log.push(P_ + ' own at ' + r(own.x) + ',' + r(own.y) + ' · ' + r(own.width) + 'x' + r(own.height));
+  }
+  report.info.move = log;
 });
 
-// ---------- B: Edit about ----------
-const out = [];
-for (const D of ['Desktop', 'Mobile']) {
-  await step('edit about · ' + D, async () => {
-    const desk = D === 'Desktop';
-    const own = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player / Own profile · ' + D);
-    const sub = own.parent;
-    const NAME = 'Profiles / Player / Own profile / Edit about · ' + D;
-    for (const n of sub.children.filter(c => c.name === NAME || c.name === 'Flow · Edit about · ' + D)) n.remove();
-    let right = 0; for (const k of sub.children) if (k.y < own.y + own.height && k.y + k.height > own.y) right = Math.max(right, k.x + k.width);
-    const f = own.clone(); sub.appendChild(f);
-    f.name = NAME; f.x = right + (desk ? 480 : 360); f.y = own.y;
-    for (const n of f.findAll(n => n.reactions && n.reactions.length)) await n.setReactionsAsync([]);
-
-    // About instance'i bul
-    let about = null;
-    for (const i of f.findAll(n => n.type === 'INSTANCE')) { const m = await i.getMainComponentAsync(); if (m && m.parent && m.parent.type === 'COMPONENT_SET' && m.parent.name === 'About') { about = i; break; } }
-    if (!about) throw new Error('About instance not found');
-    const at = about.findOne(n => n.type === 'TEXT' && n.name === 'About text');
-    const full = at ? at.characters : '';
-    const first = full.split(/\n\s*\n/)[0];
-
-    // kart: Positions kartinin kopyasi, basligi About
-    const tpl = f.findOne(n => n.type === 'FRAME' && n.name === 'Positions');
-    const card = tpl.clone(); card.name = 'About';
-    for (const k of card.children.slice()) if (k.name !== 'Card header') k.remove();
-    const hdr = card.findOne(n => n.name === 'Card header');
-    const ht = hdr.findOne(n => n.type === 'TEXT'); await loadFonts(ht); ht.characters = 'About';
-    const he = hdr.children.find(c => c.name === 'Edit'); if (he) he.visible = false;
-    const par = about.parent; par.insertChild(par.children.indexOf(about), card);
-    card.layoutSizingHorizontal = 'FILL'; card.layoutSizingVertical = 'HUG';
-    about.remove();
-
-    const form = frame('About form', 'VERTICAL'); card.appendChild(form);
-    GAP(form, 'spacing/md'); box(form, desk); form.layoutSizingHorizontal = 'FILL';
-    const ta = await field('Textarea', 'Filled', 'About you', first); form.appendChild(ta); ta.layoutSizingHorizontal = 'FILL';
-    const hint = await txt('Hint', `Optional. Shown as About on your profile; long texts open with Show more.`, 'Label/Small', 'color/text/secondary');
-    form.appendChild(hint); hint.layoutSizingHorizontal = 'FILL'; hint.textAutoResize = 'HEIGHT';
-    await actions(form);
-
-    // prototip
-    let ownAbout = null;
-    for (const i of own.findAll(n => n.type === 'INSTANCE')) { const m = await i.getMainComponentAsync(); if (m && m.parent && m.parent.type === 'COMPONENT_SET' && m.parent.name === 'About') { ownAbout = i; break; } }
-    const ownEdit = ownAbout.findOne(n => n.type === 'INSTANCE' && /^Edit/.test(n.name) && n.visible);
-    if (!ownEdit) throw new Error('About Edit button not found');
-    await ownEdit.setReactionsAsync([nav(f)]);
-    for (const b of form.findAll(n => /^Button · (Save|Cancel)$/.test(n.name))) await b.setReactionsAsync([nav(own)]);
-
-    // ok: Edit'in sagindan bosluga, yukari, hedefin ustune
-    const sb = sub.absoluteBoundingBox, bb = ownEdit.absoluteBoundingBox;
-    const bx = figma.createRectangle(); sub.appendChild(bx);
-    bx.name = 'Clicked'; bx.x = bb.x - sb.x - 4; bx.y = bb.y - sb.y - 4; bx.resize(bb.width + 8, bb.height + 8);
-    bx.fills = []; bx.strokes = [{ type: 'SOLID', color: BLUE }]; bx.strokeWeight = 3; bx.cornerRadius = 26;
-    const by = bx.y + bx.height / 2, topY = own.y - 380, tx = f.x + f.width / 2, vx = own.x + own.width + (desk ? 180 : 140);
-    const pts = [[bx.x + bx.width, by], [vx, by], [vx, topY], [tx, topY], [tx, f.y]];
-    const { lab } = await elbow(sub, pts, 'Click Edit on About · the card turns into its form', 'Flow · Edit about · ' + D, [bx]);
-    lab.x = f.x - lab.width - 24; lab.y = topY - lab.height - 8;
-
-    let rr = 0, bb2 = 0; for (const k of sub.children) { rr = Math.max(rr, k.x + k.width); bb2 = Math.max(bb2, k.y + k.height); }
-    sub.resizeWithoutConstraints(Math.max(sub.width, Math.ceil(rr + 80)), Math.max(sub.height, Math.ceil(bb2 + 80)));
-    out.push(D + ' · at ' + r(f.x) + ' · card ' + r(card.width) + 'x' + r(card.height) + ' · field ' + r(ta.width) + 'x' + r(ta.height) + ' · fill ' + hex(form.fills[0]) + ' · text ' + first.length + ' chars');
-  });
-}
-report.info.pages = out;
-
-await step('flow starts', async () => {
-  const keep = [];
-  for (const s of (p02.flowStartingPoints || [])) {
-    const n = await figma.getNodeByIdAsync(s.nodeId);
-    if (!n || /\/ Edit (details|career|positions|about) ·/.test(n.name)) continue;
-    if (keep.some(k => k.name === s.name)) continue;
-    keep.push({ nodeId: s.nodeId, name: s.name });
+await step('widen platforms', async () => {
+  const log = [];
+  for (const P_ of ['Web', 'Mobile']) {
+    const ps = plat(P_);
+    let right = 0, bottom = 0; for (const k of ps.children) { right = Math.max(right, k.x + k.width); bottom = Math.max(bottom, k.y + k.height); }
+    const needW = Math.ceil(right + 160), needH = Math.ceil(bottom + 160);
+    const oldRight = ps.x + ps.width, dx = Math.max(0, needW - ps.width);
+    if (dx > 0 || needH > ps.height) ps.resizeWithoutConstraints(Math.max(ps.width, needW), Math.max(ps.height, needH));
+    if (dx > 0) for (const n of p02.children) if (n !== ps && n.x >= oldRight - 1) n.x += dx;
+    log.push(P_ + ' · ' + r(ps.width) + 'x' + r(ps.height) + (dx ? ' · grew ' + dx + ', shifted right side' : ''));
   }
-  p02.flowStartingPoints = keep;
-  report.info.flowStarts = keep.length;
+  report.info.platforms = log;
 });
 
 await step('check', async () => {
-  const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web'), mob = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
-  for (const s of [web, mob]) { let right = 0, bottom = 0; for (const k of s.children) { right = Math.max(right, k.x + k.width); bottom = Math.max(bottom, k.y + k.height); }
-    if (bottom + 80 > s.height) s.resizeWithoutConstraints(s.width, Math.ceil(bottom + 80));
-    if (right + 80 > s.width) report.info['wide_' + s.name] = 'content reaches ' + r(right) + ' of ' + r(s.width); }
-  const ov = [];
+  const ov = [], out = [];
+  function walk(sec) {
+    const kids = sec.children;
+    const secs = kids.filter(c => c.type === 'SECTION');
+    for (let i = 0; i < secs.length; i++) for (let j = i + 1; j < secs.length; j++) { const a = secs[i], z = secs[j];
+      if (a.x < z.x + z.width && z.x < a.x + a.width && a.y < z.y + z.height && z.y < a.y + a.height) ov.push(a.name + ' / ' + z.name + ' in ' + sec.name); }
+    if (sec.type === 'SECTION') for (const k of kids) if (k.x < 0 || k.y < 0 || k.x + k.width > sec.width + 1 || k.y + k.height > sec.height + 1) out.push(k.name + ' outside ' + sec.name);
+    for (const c of secs) walk(c);
+  }
   const top = p02.children.filter(c => c.type === 'SECTION');
-  for (const s of [web, mob]) { const k = s.children.filter(c => c.type === 'SECTION');
-    for (let i = 0; i < k.length; i++) for (let j = i + 1; j < k.length; j++) { const a = k[i], z = k[j];
-      if (a.x < z.x + z.width && z.x < a.x + a.width && a.y < z.y + z.height && z.y < a.y + a.height) ov.push(a.name + ' / ' + z.name); } }
   for (let i = 0; i < top.length; i++) for (let j = i + 1; j < top.length; j++) { const a = top[i], z = top[j];
     if (a.x < z.x + z.width && z.x < a.x + a.width && a.y < z.y + z.height && z.y < a.y + a.height) ov.push(a.name + ' / ' + z.name); }
+  for (const t of top) walk(t);
   report.info.sectionOverlaps = ov.length ? ov : 'none';
+  report.info.outsideParent = out.length ? out.slice(0, 20) : 'none';
   let total = 0, broken = 0;
   for (const n of p02.findAll(n => n.reactions && n.reactions.length)) for (const rr of n.reactions) for (const a of (rr.actions || [])) {
     if (!a.destinationId) continue; total++; if (!(await figma.getNodeByIdAsync(a.destinationId))) broken++;
