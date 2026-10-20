@@ -1,4 +1,4 @@
-// step 170 · Own profile alt Section'lari 'Profiles · other roles' icinden cikar, Web ve Mobile'in dogrudan cocugu olur · Web tasiyorsa genisler, Mobile ve sagindakiler kayar · Profiles · other roles icerigine gore kuculur · ic ice Section kontrolu (tasma ve cakisma)
+// step 171 · Alt Section'lar cocuklarini icine alir: ustten ya da soldan tasan oklar ve notlar icin Section yukari/sola buyur, icerik yerinde kalir (Own profile, Profiles · player) · gerekirse Web/Mobile buyur · kontrol
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -86,23 +86,20 @@ function moveKeep(node, parent) { const b = BB(node), pb = BB(parent); parent.ap
 function fit(sec, pad) { let right = 0, bottom = 0; for (const k of sec.children) { right = Math.max(right, k.x + k.width); bottom = Math.max(bottom, k.y + k.height); } sec.resizeWithoutConstraints(Math.ceil(right + pad), Math.ceil(bottom + pad)); }
 const plat = name => p02.children.find(n => n.type === 'SECTION' && n.name === name);
 
-await step('move own profile out', async () => {
+await step('contain children', async () => {
   const log = [];
-  for (const P_ of ['Web', 'Mobile']) {
-    const ps = plat(P_);
-    const own = ps.findOne(n => n.type === 'SECTION' && n.name === 'Own profile');
-    if (!own) { log.push(P_ + ': no Own profile'); continue; }
-    const was = own.parent;
-    if (was !== ps) {
-      moveKeep(own, ps);
-      if (was.type === 'SECTION') { const before = r(was.width) + 'x' + r(was.height); fit(was, 80); log.push(P_ + ': moved out of ' + was.name + ' (' + before + ' -> ' + r(was.width) + 'x' + r(was.height) + ')'); }
-    } else log.push(P_ + ': already direct child');
-    // Own profile, kardes alt Section'larin altinda, en az 160 bosluk
-    let maxBottom = 0; for (const k of ps.children) if (k !== own && k.type === 'SECTION') maxBottom = Math.max(maxBottom, k.y + k.height);
-    if (own.y < maxBottom + 160) own.y = maxBottom + 160;
-    log.push(P_ + ' own at ' + r(own.x) + ',' + r(own.y) + ' · ' + r(own.width) + 'x' + r(own.height));
+  function contain(sec) {
+    for (const c of sec.children.filter(k => k.type === 'SECTION')) contain(c);
+    if (sec.type !== 'SECTION' || sec.parent.type === 'PAGE') return;
+    let minX = Infinity, minY = Infinity; for (const k of sec.children) { minX = Math.min(minX, k.x); minY = Math.min(minY, k.y); }
+    const dx = minX < 80 ? Math.ceil(80 - minX) : 0, dy = minY < 80 ? Math.ceil(80 - minY) : 0;
+    if (dx || dy) { for (const k of sec.children) { k.x += dx; k.y += dy; } sec.x -= dx; sec.y -= dy; }
+    let right = 0, bottom = 0; for (const k of sec.children) { right = Math.max(right, k.x + k.width); bottom = Math.max(bottom, k.y + k.height); }
+    const w = Math.max(sec.width, Math.ceil(right + 80)), h = Math.max(sec.height, Math.ceil(bottom + 80));
+    if (dx || dy || w !== sec.width || h !== sec.height) { sec.resizeWithoutConstraints(w, h); log.push(sec.parent.name + ' › ' + sec.name + (dx || dy ? ' · grew left/up ' + dx + '/' + dy : '') + ' · ' + r(w) + 'x' + r(h)); }
   }
-  report.info.move = log;
+  for (const P_ of ['Web', 'Mobile']) contain(plat(P_));
+  report.info.contain = log.length ? log : 'nothing to fix';
 });
 
 await step('widen platforms', async () => {
@@ -114,7 +111,7 @@ await step('widen platforms', async () => {
     const oldRight = ps.x + ps.width, dx = Math.max(0, needW - ps.width);
     if (dx > 0 || needH > ps.height) ps.resizeWithoutConstraints(Math.max(ps.width, needW), Math.max(ps.height, needH));
     if (dx > 0) for (const n of p02.children) if (n !== ps && n.x >= oldRight - 1) n.x += dx;
-    log.push(P_ + ' · ' + r(ps.width) + 'x' + r(ps.height) + (dx ? ' · grew ' + dx + ', shifted right side' : ''));
+    log.push(P_ + ' · ' + r(ps.width) + 'x' + r(ps.height) + (dx ? ' · grew ' + dx : ''));
   }
   report.info.platforms = log;
 });
