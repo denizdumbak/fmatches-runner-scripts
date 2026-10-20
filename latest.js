@@ -1,4 +1,4 @@
-// step 154 · 01'e yeni Section "5 · Forms": Form field (Type x State, 30 varyant) + Checkbox (6 varyant), radius/xs 4 degiskeni, header arama ikonu degiskene baglanir
+// step 155 · 5 · Forms yeniden kurulur: bilesen yuksekligi HUG (154'te 100'e sabitlenmisti), cipler HUG, Multi-chip mevki kodlari (CM, RW) + yuvarlak + butonu, About hata mesaji, home name placeholder
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -101,17 +101,17 @@ await step('section', async () => {
 const TYPES = ['Text', 'Select', 'Date', 'Textarea', 'Multi-chip'];
 const STATES = ['Default', 'Hover', 'Focus', 'Filled', 'Error', 'Disabled'];
 const C = {
-  'Text':       { label: `Name in home country`, ph: `Add the name used at home`, val: `Leo James Marsh`, errVal: '', err: `This field is required.`, help: `Shown under your name on your profile.`, trail: null },
+  'Text':       { label: `Name in home country`, ph: `Full name as written at home`, val: `Leo James Marsh`, errVal: '', err: `This field is required.`, help: `Shown under your name on your profile.`, trail: null },
   'Select':     { label: `Current club`, ph: `Search clubs`, val: `Riverside FC`, errVal: `Riversde`, err: `Choose a club from the list.`, help: `Choose “Without a club” if you are a free agent.`, trail: 'chevron' },
   'Date':       { label: `Date of birth`, ph: `DD.MM.YYYY`, val: `18.04.2005`, errVal: `31.02.2005`, err: `Enter a real date.`, help: `Used to show your age.`, trail: 'calendar' },
-  'Textarea':   { label: `About you`, ph: `Tell scouts how you play, what you are good at and what you are looking for.`, val: `Box-to-box midfielder who likes to receive between the lines and play forward early. Comfortable on both feet, strong in the press.`, errVal: '', err: `This field is required.`, help: `Shown as About on your profile.`, trail: null },
-  'Multi-chip': { label: `Other positions`, ph: `Add position`, val: [`Central midfield`, `Right winger`], errVal: '', err: `Add at least one position.`, help: `Your main position is set separately.`, trail: null }
+  'Textarea':   { label: `About you`, ph: `Tell scouts how you play, what you are good at and what you are looking for.`, val: `Box-to-box midfielder who likes to receive between the lines and play forward early. Comfortable on both feet, strong in the press.`, errVal: 'SAME', err: `Couldn’t save this text. Try again.`, help: `Shown as About on your profile.`, trail: null },
+  'Multi-chip': { label: `Other positions`, ph: `Add positions`, val: [`CM`, `RW`], errVal: '', err: `Add at least one position.`, help: `Your main position is set separately.`, trail: null }
 };
 function chip(label, disabled) {
   const c = figma.createFrame();
   c.name = 'Chip'; c.layoutMode = 'HORIZONTAL'; GAP(c, 'spacing/2xs');
   PAD(c, 'spacing/2xs', disabled ? 'spacing/sm' : 'spacing/xs', 'spacing/2xs', 'spacing/sm');
-  c.primaryAxisSizingMode = 'AUTO'; c.counterAxisSizingMode = 'FIXED'; c.resize(40, 32);
+  c.counterAxisSizingMode = 'FIXED'; c.resize(40, 32); c.primaryAxisSizingMode = 'AUTO';
   c.counterAxisAlignItems = 'CENTER';
   R(c, V('radius/full'));
   c.fills = [P(V(disabled ? 'color/bg/surface' : 'color/bg/brand-subtle'))];
@@ -129,7 +129,7 @@ await step('form field', async () => {
     p01.appendChild(c);
     c.name = 'Type=' + type + ', State=' + state;
     c.layoutMode = 'VERTICAL'; GAP(c, 'spacing/xs');
-    c.primaryAxisSizingMode = 'AUTO'; c.counterAxisSizingMode = 'FIXED'; c.resize(400, 100);
+    c.counterAxisSizingMode = 'FIXED'; c.resize(400, 100); c.primaryAxisSizingMode = 'AUTO';
     c.fills = []; c.clipsContent = false;
 
     const lab = await txt('Label', d.label, 'Label/Default Strong', dis ? 'color/text/secondary' : 'color/text/primary');
@@ -147,7 +147,7 @@ await step('form field', async () => {
 
     if (type === 'Multi-chip') {
       f.layoutWrap = 'WRAP'; f.counterAxisSpacing = 8; f.setBoundVariable('counterAxisSpacing', V('spacing/xs'));
-      PAD(f, 'spacing/xs', 'spacing/sm', 'spacing/xs', 'spacing/xs');
+      PAD(f, 'spacing/xs', 'spacing/xs', 'spacing/xs', 'spacing/md');
       f.counterAxisAlignItems = 'CENTER';
       f.layoutSizingVertical = 'HUG'; f.minHeight = 48;
       if (filled) {
@@ -158,15 +158,23 @@ await step('form field', async () => {
           if (!dis) ch.appendChild(icon('Remove', 'x', 16, 'color/icon/brand'));
         }
       }
+      if (!filled && !isErr) {
+        const ph = await txt('Value', d.ph, 'Body/Default', 'color/text/secondary');
+        f.appendChild(ph);
+      }
+      if (isErr) {
+        const ph = await txt('Value', d.ph, 'Body/Default', 'color/text/secondary');
+        f.appendChild(ph);
+      }
       if (!dis) {
         const add = figma.createFrame();
-        add.name = 'Add'; add.layoutMode = 'HORIZONTAL'; GAP(add, 'spacing/2xs');
-        PAD(add, 'spacing/2xs', 'spacing/xs', 'spacing/2xs', 'spacing/2xs');
-        add.primaryAxisSizingMode = 'AUTO'; add.counterAxisSizingMode = 'FIXED'; add.resize(40, 32);
-        add.counterAxisAlignItems = 'CENTER'; add.fills = [];
+        add.name = 'Add'; add.layoutMode = 'HORIZONTAL';
+        add.primaryAxisAlignItems = 'CENTER'; add.counterAxisAlignItems = 'CENTER';
+        add.resize(32, 32); add.primaryAxisSizingMode = 'FIXED'; add.counterAxisSizingMode = 'FIXED';
+        R(add, V('radius/full'));
+        add.fills = [P(V('color/bg/brand-subtle'))];
         f.appendChild(add);
         add.appendChild(icon('Icon · Add', 'plus', 16, 'color/icon/brand'));
-        add.appendChild(await txt('Add label', filled ? `Add` : d.ph, 'Label/Default Strong', 'color/text/brand'));
       }
     } else {
       const area = type === 'Textarea';
@@ -175,7 +183,7 @@ await step('form field', async () => {
       f.counterAxisAlignItems = area ? 'MIN' : 'CENTER';
       f.layoutSizingVertical = 'FIXED'; f.resize(f.width, area ? 120 : 48);
       let shown = filled ? d.val : d.ph, col = filled ? 'color/text/primary' : 'color/text/secondary';
-      if (isErr && d.errVal) { shown = d.errVal; col = 'color/text/primary'; }
+      if (isErr && d.errVal) { shown = d.errVal === 'SAME' ? d.val : d.errVal; col = 'color/text/primary'; }
       if (dis) col = 'color/text/secondary';
       const v = await txt('Value', shown, 'Body/Default', col);
       f.appendChild(v);
@@ -196,8 +204,8 @@ await step('form field', async () => {
   fieldSet.name = 'Form field';
   const key = fieldSet.addComponentProperty('Helper', 'BOOLEAN', false);
   for (const v of fieldSet.children) { const h = v.findOne(n => n.name === 'Helper'); h.componentPropertyReferences = { visible: key }; }
-  fieldSet.description = `Form field for profile edit and signup. Type: Text, Select (searchable list, e.g. clubs, countries, cities), Date, Textarea, Multi-chip (several values, e.g. other positions, nationalities). State: Default, Hover, Focus, Filled, Error, Disabled.
-Developer: label above the field, always visible (no floating label). Field 48 px high, Textarea 120 px, Multi-chip grows with its chips. Placeholder in text/secondary. Error replaces the border with text/danger and shows the message under the field; the message text depends on the rule. Helper is optional (boolean). Disabled means the user cannot change the value (lock icon), e.g. the name on profile edit.`;
+  fieldSet.description = `Form field for profile edit and signup. Type: Text, Select (searchable list, e.g. clubs, countries, cities), Date, Textarea, Multi-chip (several values, e.g. other positions, nationalities; the round + opens the list). State: Default, Hover, Focus, Filled, Error, Disabled.
+Developer: label above the field, always visible (no floating label). Field 48 px high, Textarea 120 px, Multi-chip grows with its chips. Placeholder in text/secondary. Error replaces the border with text/danger and shows the message under the field; the message text depends on the rule. Helper is optional (boolean). Disabled means the user cannot change the value (lock icon), e.g. the name on profile edit.\nPositions in chips use codes: GK Goalkeeper · RB Right-Back · LB Left-Back · CB Centre-Back · FB Full-back · CDM Defensive Midfield · CM Central Midfield · CAM Attacking Midfield · RM Right Midfield · LM Left Midfield · RW Right Winger · LW Left Winger · W Winger · ST Centre-Forward · SS Second Forward. The list shows code and full name.`;
   report.info.fieldVariants = fieldSet.children.length;
 });
 
