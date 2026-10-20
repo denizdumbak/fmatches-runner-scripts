@@ -1,4 +1,4 @@
-// step 167 · Mevki etiketleri DB'ye uyar: profillerdeki Positions kartlarinda AM -> CAM, oyuncu adlari DB adlarina (Attacking midfield, Central midfield) · Edit positions: ana mevki CAM, yan mevkiler RW + CM · 166'nin geri kalani tekrar calisir, degisiklik yapmaz
+// step 168 · Edit details formunun zemini Career satir formununkiyle ayni olur (dolgu, opaklik birebir kopyalanir) · once/sonra rapor: zemin rengi, bagli degisken, hero zemini
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -79,129 +79,34 @@ function icon(name, key, size, color) {
 }
 
 
-const box = (f, desk) => {
-  f.fills = [P(V('color/bg/subtle'))];
-  for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) f.setBoundVariable(c, V('radius/md'));
-  const p = desk ? 'spacing/lg' : 'spacing/md'; PAD(f, p, p, p, p);
-};
-async function actions(parent) {
-  let acts = parent.children.find(c => c.name === 'Edit actions');
-  if (!acts) { acts = frame('Edit actions', 'HORIZONTAL'); parent.appendChild(acts); GAP(acts, 'spacing/sm'); acts.appendChild(await button('Subtle', 'Cancel')); acts.appendChild(await button('Primary', 'Save')); }
-  acts.layoutSizingHorizontal = 'FILL'; acts.primaryAxisAlignItems = 'MAX'; acts.counterAxisAlignItems = 'CENTER';
-  const cancel = acts.children.find(c => c.name === 'Button · Cancel'); if (cancel && acts.children.indexOf(cancel) !== 0) acts.insertChild(0, cancel);
-  return acts;
-}
 
-// ---------- A: Edit details formu gri kutuda ----------
-const outA = [];
-for (const D of ['Desktop', 'Mobile']) {
-  await step('details box · ' + D, async () => {
-    const desk = D === 'Desktop';
-    const f = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player / Own profile / Edit details · ' + D);
-    if (!f) throw new Error('Edit details page missing');
-    const form = f.findOne(n => n.name === 'Details form');
-    box(form, desk);
-    await actions(form);
-    const hero = f.findOne(n => n.name === 'Hero · player identity');
-    if (desk) {
-      const pad = 24, colW = Math.floor((form.width - 2 * pad - 16) / 2);
-      for (const ff of form.findAll(n => n.type === 'INSTANCE' && /^Field · /.test(n.name))) ff.resize(colW, ff.height);
-      const photo = hero.children.find(c => /^Player photo/.test(c.name)); if (photo) photo.y = hero.height - photo.height;
-      outA.push(D + ' · form ' + r(form.width) + 'x' + r(form.height) + ' · field ' + colW + ' · hero ' + r(hero.height) + ' · photo base ' + (photo ? r(photo.y + photo.height) : '-'));
-    } else outA.push(D + ' · form ' + r(form.width) + 'x' + r(form.height) + ' · hero ' + r(hero.height));
+async function paintInfo(n) {
+  const fs = (n.fills || []).map(p => {
+    let v = '';
+    if (p.boundVariables && p.boundVariables.color) v = p.boundVariables.color.id;
+    const c = p.color ? '#' + [p.color.r, p.color.g, p.color.b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('') : p.type;
+    return { c, op: p.opacity, v };
   });
+  for (const f of fs) if (f.v) { const vv = await figma.variables.getVariableByIdAsync(f.v); f.v = vv ? vv.name : f.v; }
+  return fs.map(f => f.c + (f.op !== undefined && f.op !== 1 ? ' @' + f.op : '') + (f.v ? ' (' + f.v + ')' : '')).join(', ') + ' · node op ' + n.opacity + (n.blendMode && n.blendMode !== 'PASS_THROUGH' && n.blendMode !== 'NORMAL' ? ' · ' + n.blendMode : '');
 }
-report.info.details = outA;
-
-// ---------- 0: mevki etiketleri DB adlarina ----------
-await step('position labels to DB', async () => {
-  const MAP = { 'AM': 'CAM', 'DM': 'CDM', 'CF': 'ST',
-    'Attacking midfielder': 'Attacking midfield', 'Central midfielder': 'Central midfield', 'Defensive midfielder': 'Defensive midfield',
-    'Right midfielder': 'Right midfield', 'Left midfielder': 'Left midfield', 'Centre back': 'Centre-back', 'Right back': 'Right-back', 'Left back': 'Left-back',
-    'Full back': 'Full-back', 'Centre forward': 'Centre-forward', 'Striker': 'Centre-forward', 'Second striker': 'Second forward' };
-  let changed = 0; const seen = {};
-  for (const pg of [p01, p02]) {
-    const cards = pg.findAll(n => (n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'INSTANCE') && /^(Positions|Pitch|Position labels)$/.test(n.name));
-    for (const c of cards) for (const t of c.findAll(n => n.type === 'TEXT')) {
-      const v = t.characters.trim(); seen[v] = (seen[v] || 0) + 1;
-      if (MAP[v]) { await loadFonts(t); t.characters = MAP[v]; changed++; }
-    }
-  }
-  report.info.positionTexts = Object.keys(seen).join(' | ');
-  report.info.positionChanged = changed;
-});
-
-// ---------- B: Edit positions ----------
-const NAMES = { GK: 'Goalkeeper', RB: 'Right-Back', LB: 'Left-Back', CB: 'Centre-Back', FB: 'Full-back', CDM: 'Defensive Midfield', CM: 'Central Midfield', CAM: 'Attacking Midfield', RM: 'Right Midfield', LM: 'Left Midfield', RW: 'Right Winger', LW: 'Left Winger', W: 'Winger', ST: 'Centre-Forward', SS: 'Second Forward' };
 const out = [];
 for (const D of ['Desktop', 'Mobile']) {
-  await step('edit positions · ' + D, async () => {
-    const desk = D === 'Desktop';
-    const own = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player / Own profile · ' + D);
-    const sub = own.parent;
-    const NAME = 'Profiles / Player / Own profile / Edit positions · ' + D;
-    for (const n of sub.children.filter(c => c.name === NAME || c.name === 'Flow · Edit positions · ' + D)) n.remove();
-    let right = 0; for (const k of sub.children) if (k.y < own.y + own.height && k.y + k.height > own.y) right = Math.max(right, k.x + k.width);
-    const f = own.clone(); sub.appendChild(f);
-    f.name = NAME; f.x = right + (desk ? 480 : 360); f.y = own.y;
-    for (const n of f.findAll(n => n.reactions && n.reactions.length)) await n.setReactionsAsync([]);
-
-    const card = f.findOne(n => n.type === 'FRAME' && n.name === 'Positions');
-    if (!card) throw new Error('Positions card not found');
-    const hdr = card.findOne(n => n.name === 'Card header');
-    const hEdit = hdr && hdr.children.find(c => c.name === 'Edit'); if (hEdit) hEdit.visible = false;
-    const labels = card.findOne(n => n.name === 'Position labels');
-    const found = labels ? labels.findAll(n => n.type === 'TEXT').map(t => t.characters.trim()) : [];
-    report.info['labels_' + D] = found;
-    if (labels) labels.visible = false;
-    const ALIAS = { AM: 'CAM' }; const codes = found.map(t => ALIAS[t] || t).filter(t => NAMES[t]);
-    const main = codes[0] || 'CAM', sec = codes.length > 1 ? codes.slice(1) : ['CM', 'RW'];
-
-    const form = frame('Positions form', 'VERTICAL'); card.appendChild(form);
-    GAP(form, 'spacing/md'); box(form, false); form.layoutSizingHorizontal = 'FILL';
-    const fm = await field('Select', 'Filled', 'Main position', main + ' · ' + NAMES[main]); form.appendChild(fm); fm.layoutSizingHorizontal = 'FILL';
-    const fs = await field('Multi-chip', 'Filled', 'Secondary positions', undefined, sec); form.appendChild(fs); fs.layoutSizingHorizontal = 'FILL';
-    const hint = await txt('Hint', `The pitch above shows your choice.`, 'Label/Small', 'color/text/secondary');
-    form.appendChild(hint); hint.layoutSizingHorizontal = 'FILL'; hint.textAutoResize = 'HEIGHT';
-    await actions(form);
-
-    // prototip
-    const ownCard = own.findOne(n => n.type === 'FRAME' && n.name === 'Positions');
-    const ownEdit = ownCard.findOne(n => n.name === 'Card header').children.find(c => c.name === 'Edit');
-    await ownEdit.setReactionsAsync([nav(f)]);
-    for (const b of form.findAll(n => /^Button · (Save|Cancel)$/.test(n.name))) await b.setReactionsAsync([nav(own)]);
-
-    // ok: masaustu soldan (sol sutun), mobil sagdan
-    const sb = sub.absoluteBoundingBox, bb = ownEdit.absoluteBoundingBox;
-    const bx = figma.createRectangle(); sub.appendChild(bx);
-    bx.name = 'Clicked'; bx.x = bb.x - sb.x - 4; bx.y = bb.y - sb.y - 4; bx.resize(bb.width + 8, bb.height + 8);
-    bx.fills = []; bx.strokes = [{ type: 'SOLID', color: BLUE }]; bx.strokeWeight = 3; bx.cornerRadius = 26;
-    const by = bx.y + bx.height / 2, topY = own.y - 320, tx = f.x + f.width / 2;
-    const sx = desk ? bx.x : bx.x + bx.width, vx = desk ? own.x - 96 : own.x + own.width + 100;
-    const pts = [[sx, by], [vx, by], [vx, topY], [tx, topY], [tx, f.y]];
-    const { lab } = await elbow(sub, pts, 'Click Edit on Positions · the card turns into its form', 'Flow · Edit positions · ' + D, [bx]);
-    lab.x = f.x - lab.width - 24; lab.y = topY - lab.height - 8;
-
-    let rr = 0, bb2 = 0; for (const k of sub.children) { rr = Math.max(rr, k.x + k.width); bb2 = Math.max(bb2, k.y + k.height); }
-    sub.resizeWithoutConstraints(Math.max(sub.width, Math.ceil(rr + 80)), Math.max(sub.height, Math.ceil(bb2 + 80)));
-    const shown = fs.findAll(n => n.name === 'Chip' && n.visible).length;
-    out.push(D + ' · at ' + r(f.x) + ' · card ' + r(card.width) + 'x' + r(card.height) + ' · main ' + main + ' · chips ' + shown + '/' + sec.length + ' · field ' + r(fm.width));
+  await step('details fill · ' + D, async () => {
+    const career = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player / Own profile / Edit career · ' + D);
+    const det = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player / Own profile / Edit details · ' + D);
+    const ref = career.findOne(n => n.name === 'Career row form');
+    const form = det.findOne(n => n.name === 'Details form');
+    const hero = det.findOne(n => n.name === 'Hero · player identity');
+    const before = await paintInfo(form);
+    form.fills = JSON.parse(JSON.stringify(ref.fills)).map(p => p);
+    form.fills = ref.fills;
+    form.opacity = ref.opacity; form.blendMode = ref.blendMode;
+    for (const g of form.children.filter(c => c.type === 'FRAME')) { if (g.fills.length) g.fills = []; }
+    out.push(D + ' · career ' + await paintInfo(ref) + ' | details before ' + before + ' | after ' + await paintInfo(form) + ' | hero ' + await paintInfo(hero));
   });
 }
-report.info.pages = out;
-
-// ---------- akis baslangiclari: kopyalardan gelenler silinir ----------
-await step('flow starts', async () => {
-  const keep = [];
-  for (const s of (p02.flowStartingPoints || [])) {
-    const n = await figma.getNodeByIdAsync(s.nodeId);
-    if (!n || /\/ Edit (details|career|positions) ·/.test(n.name)) continue;
-    if (keep.some(k => k.name === s.name)) continue;
-    keep.push({ nodeId: s.nodeId, name: s.name });
-  }
-  p02.flowStartingPoints = keep;
-  report.info.flowStarts = keep.length;
-});
+report.info.fills = out;
 
 await step('check', async () => {
   const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web'), mob = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
