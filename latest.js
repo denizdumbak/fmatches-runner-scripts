@@ -1,4 +1,4 @@
-// step 167 · Edit positions duzeltmesi: profildeki AM kodu formda CAM (DB listesi), ana mevki CAM, yan mevkiler RW + CM · 166'nin geri kalani tekrar calisir, degisiklik yapmaz
+// step 167 · Mevki etiketleri DB'ye uyar: profillerdeki Positions kartlarinda AM -> CAM, oyuncu adlari DB adlarina (Attacking midfield, Central midfield) · Edit positions: ana mevki CAM, yan mevkiler RW + CM · 166'nin geri kalani tekrar calisir, degisiklik yapmaz
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -112,6 +112,24 @@ for (const D of ['Desktop', 'Mobile']) {
   });
 }
 report.info.details = outA;
+
+// ---------- 0: mevki etiketleri DB adlarina ----------
+await step('position labels to DB', async () => {
+  const MAP = { 'AM': 'CAM', 'DM': 'CDM', 'CF': 'ST',
+    'Attacking midfielder': 'Attacking midfield', 'Central midfielder': 'Central midfield', 'Defensive midfielder': 'Defensive midfield',
+    'Right midfielder': 'Right midfield', 'Left midfielder': 'Left midfield', 'Centre back': 'Centre-back', 'Right back': 'Right-back', 'Left back': 'Left-back',
+    'Full back': 'Full-back', 'Centre forward': 'Centre-forward', 'Striker': 'Centre-forward', 'Second striker': 'Second forward' };
+  let changed = 0; const seen = {};
+  for (const pg of [p01, p02]) {
+    const cards = pg.findAll(n => (n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'INSTANCE') && /^(Positions|Pitch|Position labels)$/.test(n.name));
+    for (const c of cards) for (const t of c.findAll(n => n.type === 'TEXT')) {
+      const v = t.characters.trim(); seen[v] = (seen[v] || 0) + 1;
+      if (MAP[v]) { await loadFonts(t); t.characters = MAP[v]; changed++; }
+    }
+  }
+  report.info.positionTexts = Object.keys(seen).join(' | ');
+  report.info.positionChanged = changed;
+});
 
 // ---------- B: Edit positions ----------
 const NAMES = { GK: 'Goalkeeper', RB: 'Right-Back', LB: 'Left-Back', CB: 'Centre-Back', FB: 'Full-back', CDM: 'Defensive Midfield', CM: 'Central Midfield', CAM: 'Attacking Midfield', RM: 'Right Midfield', LM: 'Left Midfield', RW: 'Right Winger', LW: 'Left Winger', W: 'Winger', ST: 'Centre-Forward', SS: 'Second Forward' };
