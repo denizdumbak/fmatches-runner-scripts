@@ -1,4 +1,4 @@
-// step 165 · Own profile / Edit career (Desktop + Mobile): Career karti yerinde form · ilk satir (Riverside FC) acik form: kulup, takim, katilis, sozlesme bitisi, Still at this club, On loan, Remove · diger satirlarda Edit · Add club · ok ve prototip
+// step 166 · Edit details formu gri kutuya (Career satiri gibi, Cancel · Save sagda) · Own profile / Edit positions (Desktop + Mobile): ana mevki Select + yan mevkiler Multi-chip, saha onizleme olarak kalir · ok, prototip, akis baslangiclari
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -78,89 +78,112 @@ function icon(name, key, size, color) {
   f.rescale(size / 24); return f;
 }
 
-async function rowForm(desk, width) {
-  const form = frame('Career row form', 'VERTICAL');
-  GAP(form, 'spacing/md');
-  form.fills = [P(V('color/bg/subtle'))]; for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) form.setBoundVariable(c, V('radius/md'));
-  PAD(form, desk ? 'spacing/lg' : 'spacing/md', desk ? 'spacing/lg' : 'spacing/md', desk ? 'spacing/lg' : 'spacing/md', desk ? 'spacing/lg' : 'spacing/md');
-  const grid = frame('Fields', desk ? 'HORIZONTAL' : 'VERTICAL'); form.appendChild(grid);
-  if (desk) { grid.layoutWrap = 'WRAP'; grid.setBoundVariable('counterAxisSpacing', V('spacing/md')); }
-  GAP(grid, 'spacing/md'); grid.layoutSizingHorizontal = 'FILL';
-  const F = [['Select', 'Club', 'Riverside FC'], ['Select', 'Team', 'Senior'], ['Date', 'Joined', '01.07.2024'], ['Date', 'Contract until', '30.06.2027']];
-  for (const d of F) { const f = await field(d[0], 'Filled', d[1], d[2]); grid.appendChild(f); f.layoutSizingHorizontal = desk ? 'FIXED' : 'FILL'; }
-  const ck = frame('Checks', desk ? 'HORIZONTAL' : 'VERTICAL'); form.appendChild(ck);
-  GAP(ck, 'spacing/lg');
-  ck.appendChild(await checkbox(true, 'Still at this club'));
-  ck.appendChild(await checkbox(false, 'On loan'));
-  const hint = await txt('Hint', `While you are still at the club, the second date is your contract end and shows as "Contract until" on your profile. Untick it to enter the date you left.`, 'Label/Small', 'color/text/secondary');
-  form.appendChild(hint); hint.layoutSizingHorizontal = 'FILL'; hint.textAutoResize = 'HEIGHT';
-  const acts = frame('Edit actions', 'HORIZONTAL'); form.appendChild(acts);
-  acts.layoutSizingHorizontal = 'FILL'; acts.primaryAxisAlignItems = 'SPACE_BETWEEN'; acts.counterAxisAlignItems = 'CENTER';
-  acts.appendChild(await txt('Remove', `Remove this club`, 'Label/Default Strong', 'color/text/danger'));
-  const bs = frame('Buttons', 'HORIZONTAL'); acts.appendChild(bs); GAP(bs, 'spacing/sm');
-  bs.appendChild(await button('Subtle', 'Cancel'));
-  bs.appendChild(await button('Primary', 'Save'));
-  return form;
+
+const box = (f, desk) => {
+  f.fills = [P(V('color/bg/subtle'))];
+  for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) f.setBoundVariable(c, V('radius/md'));
+  const p = desk ? 'spacing/lg' : 'spacing/md'; PAD(f, p, p, p, p);
+};
+async function actions(parent) {
+  let acts = parent.children.find(c => c.name === 'Edit actions');
+  if (!acts) { acts = frame('Edit actions', 'HORIZONTAL'); parent.appendChild(acts); GAP(acts, 'spacing/sm'); acts.appendChild(await button('Subtle', 'Cancel')); acts.appendChild(await button('Primary', 'Save')); }
+  acts.layoutSizingHorizontal = 'FILL'; acts.primaryAxisAlignItems = 'MAX'; acts.counterAxisAlignItems = 'CENTER';
+  const cancel = acts.children.find(c => c.name === 'Button · Cancel'); if (cancel && acts.children.indexOf(cancel) !== 0) acts.insertChild(0, cancel);
+  return acts;
 }
 
+// ---------- A: Edit details formu gri kutuda ----------
+const outA = [];
+for (const D of ['Desktop', 'Mobile']) {
+  await step('details box · ' + D, async () => {
+    const desk = D === 'Desktop';
+    const f = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player / Own profile / Edit details · ' + D);
+    if (!f) throw new Error('Edit details page missing');
+    const form = f.findOne(n => n.name === 'Details form');
+    box(form, desk);
+    await actions(form);
+    const hero = f.findOne(n => n.name === 'Hero · player identity');
+    if (desk) {
+      const pad = 24, colW = Math.floor((form.width - 2 * pad - 16) / 2);
+      for (const ff of form.findAll(n => n.type === 'INSTANCE' && /^Field · /.test(n.name))) ff.resize(colW, ff.height);
+      const photo = hero.children.find(c => /^Player photo/.test(c.name)); if (photo) photo.y = hero.height - photo.height;
+      outA.push(D + ' · form ' + r(form.width) + 'x' + r(form.height) + ' · field ' + colW + ' · hero ' + r(hero.height) + ' · photo base ' + (photo ? r(photo.y + photo.height) : '-'));
+    } else outA.push(D + ' · form ' + r(form.width) + 'x' + r(form.height) + ' · hero ' + r(hero.height));
+  });
+}
+report.info.details = outA;
+
+// ---------- B: Edit positions ----------
+const NAMES = { GK: 'Goalkeeper', RB: 'Right-Back', LB: 'Left-Back', CB: 'Centre-Back', FB: 'Full-back', CDM: 'Defensive Midfield', CM: 'Central Midfield', CAM: 'Attacking Midfield', RM: 'Right Midfield', LM: 'Left Midfield', RW: 'Right Winger', LW: 'Left Winger', W: 'Winger', ST: 'Centre-Forward', SS: 'Second Forward' };
 const out = [];
 for (const D of ['Desktop', 'Mobile']) {
-  await step('edit career · ' + D, async () => {
+  await step('edit positions · ' + D, async () => {
     const desk = D === 'Desktop';
     const own = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player / Own profile · ' + D);
     const sub = own.parent;
-    const NAME = 'Profiles / Player / Own profile / Edit career · ' + D;
-    for (const n of sub.children.filter(c => c.name === NAME || c.name === 'Flow · Edit career · ' + D)) n.remove();
+    const NAME = 'Profiles / Player / Own profile / Edit positions · ' + D;
+    for (const n of sub.children.filter(c => c.name === NAME || c.name === 'Flow · Edit positions · ' + D)) n.remove();
     let right = 0; for (const k of sub.children) if (k.y < own.y + own.height && k.y + k.height > own.y) right = Math.max(right, k.x + k.width);
     const f = own.clone(); sub.appendChild(f);
     f.name = NAME; f.x = right + (desk ? 480 : 360); f.y = own.y;
     for (const n of f.findAll(n => n.reactions && n.reactions.length)) await n.setReactionsAsync([]);
 
-    const entries = f.findOne(n => n.name === 'Club entries');
-    if (!entries) throw new Error('Club entries not found');
-    const card = entries.parent;
+    const card = f.findOne(n => n.type === 'FRAME' && n.name === 'Positions');
+    if (!card) throw new Error('Positions card not found');
     const hdr = card.findOne(n => n.name === 'Card header');
     const hEdit = hdr && hdr.children.find(c => c.name === 'Edit'); if (hEdit) hEdit.visible = false;
-    const list = entries.children.slice();
-    const form = await rowForm(desk);
-    entries.insertChild(0, form); form.layoutSizingHorizontal = 'FILL';
-    if (desk) { const colW = Math.floor((form.width - 48 - 16) / 2); for (const ff of form.findAll(n => n.type === 'INSTANCE' && /^Field · /.test(n.name))) ff.resize(colW, ff.height); }
-    list[0].remove();
-    for (const e of list.slice(1)) {
-      const w = frame('Row · ' + e.name, 'HORIZONTAL');
-      entries.insertChild(entries.children.indexOf(e), w);
-      w.counterAxisAlignItems = 'MIN'; GAP(w, 'spacing/sm'); w.layoutSizingHorizontal = 'FILL';
-      w.appendChild(e); e.layoutSizingHorizontal = 'FILL';
-      const eb = editBtn(); w.appendChild(eb);
-    }
-    entries.itemSpacing = 16;
-    const add = frame('Add club', 'HORIZONTAL'); card.appendChild(add);
-    GAP(add, 'spacing/xs'); add.counterAxisAlignItems = 'CENTER'; add.paddingTop = 8; add.paddingBottom = 8;
-    add.appendChild(icon('Icon · Add', 'plus', 16, 'color/icon/brand'));
-    add.appendChild(await txt('Label', `Add club`, 'Label/Default Strong', 'color/text/brand'));
+    const labels = card.findOne(n => n.name === 'Position labels');
+    const found = labels ? labels.findAll(n => n.type === 'TEXT').map(t => t.characters.trim()) : [];
+    report.info['labels_' + D] = found;
+    if (labels) labels.visible = false;
+    const codes = found.filter(t => NAMES[t]);
+    const main = codes[0] || 'CAM', sec = codes.length > 1 ? codes.slice(1) : ['CM', 'RW'];
+
+    const form = frame('Positions form', 'VERTICAL'); card.appendChild(form);
+    GAP(form, 'spacing/md'); box(form, false); form.layoutSizingHorizontal = 'FILL';
+    const fm = await field('Select', 'Filled', 'Main position', main + ' · ' + NAMES[main]); form.appendChild(fm); fm.layoutSizingHorizontal = 'FILL';
+    const fs = await field('Multi-chip', 'Filled', 'Secondary positions', undefined, sec); form.appendChild(fs); fs.layoutSizingHorizontal = 'FILL';
+    const hint = await txt('Hint', `The pitch above shows your choice.`, 'Label/Small', 'color/text/secondary');
+    form.appendChild(hint); hint.layoutSizingHorizontal = 'FILL'; hint.textAutoResize = 'HEIGHT';
+    await actions(form);
 
     // prototip
-    const ownCareer = own.findOne(n => n.name === 'Club entries').parent;
-    const ownEdit = ownCareer.findOne(n => n.name === 'Card header').children.find(c => c.name === 'Edit');
+    const ownCard = own.findOne(n => n.type === 'FRAME' && n.name === 'Positions');
+    const ownEdit = ownCard.findOne(n => n.name === 'Card header').children.find(c => c.name === 'Edit');
     await ownEdit.setReactionsAsync([nav(f)]);
     for (const b of form.findAll(n => /^Button · (Save|Cancel)$/.test(n.name))) await b.setReactionsAsync([nav(own)]);
 
-    // ok: Edit butonunun sagindan, iki sayfa arasindaki bosluga, yukari, hedefin ustune
+    // ok: masaustu soldan (sol sutun), mobil sagdan
     const sb = sub.absoluteBoundingBox, bb = ownEdit.absoluteBoundingBox;
-    const box = figma.createRectangle(); sub.appendChild(box);
-    box.name = 'Clicked'; box.x = bb.x - sb.x - 4; box.y = bb.y - sb.y - 4; box.resize(bb.width + 8, bb.height + 8);
-    box.fills = []; box.strokes = [{ type: 'SOLID', color: BLUE }]; box.strokeWeight = 3; box.cornerRadius = 26;
-    const by = box.y + box.height / 2, gx = own.x + own.width + (desk ? 240 : 180), topY = own.y - 260, tx = f.x + f.width / 2;
-    const pts = [[box.x + box.width, by], [gx, by], [gx, topY], [tx, topY], [tx, f.y]];
-    const { lab } = await elbow(sub, pts, 'Click Edit on Career · the card turns into its form', 'Flow · Edit career · ' + D, [box]);
-    lab.x = f.x - lab.width - 24 > gx ? f.x - lab.width - 24 : gx + 24; lab.y = topY - lab.height - 8;
+    const bx = figma.createRectangle(); sub.appendChild(bx);
+    bx.name = 'Clicked'; bx.x = bb.x - sb.x - 4; bx.y = bb.y - sb.y - 4; bx.resize(bb.width + 8, bb.height + 8);
+    bx.fills = []; bx.strokes = [{ type: 'SOLID', color: BLUE }]; bx.strokeWeight = 3; bx.cornerRadius = 26;
+    const by = bx.y + bx.height / 2, topY = own.y - 320, tx = f.x + f.width / 2;
+    const sx = desk ? bx.x : bx.x + bx.width, vx = desk ? own.x - 96 : own.x + own.width + 100;
+    const pts = [[sx, by], [vx, by], [vx, topY], [tx, topY], [tx, f.y]];
+    const { lab } = await elbow(sub, pts, 'Click Edit on Positions · the card turns into its form', 'Flow · Edit positions · ' + D, [bx]);
+    lab.x = f.x - lab.width - 24; lab.y = topY - lab.height - 8;
 
     let rr = 0, bb2 = 0; for (const k of sub.children) { rr = Math.max(rr, k.x + k.width); bb2 = Math.max(bb2, k.y + k.height); }
     sub.resizeWithoutConstraints(Math.max(sub.width, Math.ceil(rr + 80)), Math.max(sub.height, Math.ceil(bb2 + 80)));
-    out.push(D + ' · at ' + r(f.x) + ' · ' + r(f.width) + 'x' + r(f.height) + ' · card ' + r(card.width) + 'x' + r(card.height) + ' · rows with Edit ' + (list.length - 1));
+    const shown = fs.findAll(n => n.name === 'Chip' && n.visible).length;
+    out.push(D + ' · at ' + r(f.x) + ' · card ' + r(card.width) + 'x' + r(card.height) + ' · main ' + main + ' · chips ' + shown + '/' + sec.length + ' · field ' + r(fm.width));
   });
 }
 report.info.pages = out;
+
+// ---------- akis baslangiclari: kopyalardan gelenler silinir ----------
+await step('flow starts', async () => {
+  const keep = [];
+  for (const s of (p02.flowStartingPoints || [])) {
+    const n = await figma.getNodeByIdAsync(s.nodeId);
+    if (!n || /\/ Edit (details|career|positions) ·/.test(n.name)) continue;
+    if (keep.some(k => k.name === s.name)) continue;
+    keep.push({ nodeId: s.nodeId, name: s.name });
+  }
+  p02.flowStartingPoints = keep;
+  report.info.flowStarts = keep.length;
+});
 
 await step('check', async () => {
   const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web'), mob = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
