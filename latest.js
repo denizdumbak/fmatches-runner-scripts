@@ -1,4 +1,4 @@
-// step 172 · Own profile alt Section'i (171'de yukari buyudu) Profiles · other roles'un 160 altina iner · Web/Mobile yuksekligi · kontrol
+// step 173 · Own profile / Edit links (Desktop + Mobile): Links karti yerinde form, gri kutuda URL alanlari, x ile sil, Add link, Cancel · Save · 01 panosundaki Links · Editing de gri kutuya · ok, prototip · Section duzeni ve kontrol
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -70,7 +70,7 @@ async function checkbox(on, label) {
 }
 const editSet = setOf('Edit button');
 const editBtn = () => { const i = editSet.children.find(v => v.name === 'State=Default').createInstance(); i.name = 'Edit'; return i; };
-const ICON = { plus: 'M12 5v14M5 12h14' };
+const ICON = { plus: 'M12 5v14M5 12h14', x: 'M17 7L7 17M7 7l10 10' };
 function icon(name, key, size, color) {
   const f = figma.createNodeFromSvg('<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="' + ICON[key] + '" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>');
   f.name = name; f.fills = []; f.clipsContent = false;
@@ -80,22 +80,151 @@ function icon(name, key, size, color) {
 
 
 
+// zemin: bagli boya yeni dugumde yer tutucu griyle (#808080) kalabiliyor; Career satir formunun dolgusu kopyalanir (168)
+const REF = p02.findOne(n => n.name === 'Career row form');
+if (!REF) throw new Error('Career row form missing');
+const box = (f, desk) => {
+  f.fills = REF.fills;
+  for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) f.setBoundVariable(c, V('radius/md'));
+  const p = desk ? 'spacing/lg' : 'spacing/md'; PAD(f, p, p, p, p);
+};
+async function actions(parent) {
+  const acts = frame('Edit actions', 'HORIZONTAL'); parent.appendChild(acts); GAP(acts, 'spacing/sm');
+  acts.appendChild(await button('Subtle', 'Cancel')); acts.appendChild(await button('Primary', 'Save'));
+  acts.layoutSizingHorizontal = 'FILL'; acts.primaryAxisAlignItems = 'MAX'; acts.counterAxisAlignItems = 'CENTER';
+  return acts;
+}
+const hex = p => p && p.color ? '#' + [p.color.r, p.color.g, p.color.b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('') : '-';
+
+
+async function linkBox(desk, urls) {
+  const form = frame('Links form', 'VERTICAL'); GAP(form, 'spacing/md'); box(form, false);
+  const fl = frame('Link fields', 'VERTICAL'); form.appendChild(fl); GAP(fl, 'spacing/md'); fl.layoutSizingHorizontal = 'FILL';
+  for (let i = 0; i < urls.length; i++) {
+    const line = frame('Link ' + (i + 1), 'HORIZONTAL'); fl.appendChild(line);
+    GAP(line, 'spacing/xs'); line.counterAxisAlignItems = 'MAX'; line.layoutSizingHorizontal = 'FILL';
+    const f = await field('Text', 'Filled', 'Link ' + (i + 1), urls[i]); line.appendChild(f); f.layoutSizingHorizontal = 'FILL';
+    const rm = frame('Remove', 'HORIZONTAL'); line.appendChild(rm);
+    rm.primaryAxisSizingMode = 'FIXED'; rm.counterAxisSizingMode = 'FIXED'; rm.resize(48, 48);
+    rm.primaryAxisAlignItems = 'CENTER'; rm.counterAxisAlignItems = 'CENTER'; rm.cornerRadius = 999;
+    rm.appendChild(icon('Icon · Remove', 'x', 20, 'color/icon/default'));
+  }
+  const add = frame('Add link', 'HORIZONTAL'); fl.appendChild(add);
+  GAP(add, 'spacing/xs'); add.counterAxisAlignItems = 'CENTER'; add.paddingTop = 8; add.paddingBottom = 8;
+  add.appendChild(icon('Icon · Add', 'plus', 16, 'color/icon/brand'));
+  add.appendChild(await txt('Label', `Add link`, 'Label/Default Strong', 'color/text/brand'));
+  const hint = await txt('Hint', `Paste the full address. The type (video, profile, social, website) is read from it, and videos are listed first.`, 'Label/Small', 'color/text/secondary');
+  form.appendChild(hint); hint.layoutSizingHorizontal = 'FILL'; hint.textAutoResize = 'HEIGHT';
+  await actions(form);
+  return form;
+}
+const BASE = { 'youtube.com': 'youtube.com/watch?v=leo-marsh-highlights', 'transfermarkt.com': 'transfermarkt.com/leo-marsh/profil', 'instagram.com': 'instagram.com/leomarsh10' };
+
+// ---------- A: Edit links ----------
+const out = [];
+for (const D of ['Desktop', 'Mobile']) {
+  await step('edit links · ' + D, async () => {
+    const desk = D === 'Desktop';
+    const own = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player / Own profile · ' + D);
+    const sub = own.parent;
+    const NAME = 'Profiles / Player / Own profile / Edit links · ' + D;
+    for (const n of sub.children.filter(c => c.name === NAME || c.name === 'Flow · Edit links · ' + D)) n.remove();
+    let right = 0; for (const k of sub.children) if (k.y < own.y + own.height && k.y + k.height > own.y) right = Math.max(right, k.x + k.width);
+    const f = own.clone(); sub.appendChild(f);
+    f.name = NAME; f.x = right + (desk ? 480 : 360); f.y = own.y;
+    for (const n of f.findAll(n => n.reactions && n.reactions.length)) await n.setReactionsAsync([]);
+
+    const list = f.findOne(n => n.name === 'Link list');
+    if (!list) throw new Error('Link list not found');
+    const card = list.parent;
+    const domains = list.findAll(n => n.type === 'TEXT' && n.name === 'Domain').map(t => t.characters.trim());
+    report.info['domains_' + D] = domains;
+    const urls = domains.length ? domains.map(d => BASE[d] || (d + '/leo-marsh')) : Object.values(BASE);
+    const hdr = card.findOne(n => n.name === 'Card header');
+    const he = hdr && hdr.children.find(c => c.name === 'Edit'); if (he) he.visible = false;
+    const form = await linkBox(desk, urls);
+    card.insertChild(card.children.indexOf(list), form); form.layoutSizingHorizontal = 'FILL';
+    list.remove();
+
+    // prototip
+    const ownList = own.findOne(n => n.name === 'Link list');
+    const ownEdit = ownList.parent.findOne(n => n.name === 'Card header').children.find(c => c.name === 'Edit');
+    await ownEdit.setReactionsAsync([nav(f)]);
+    for (const b of form.findAll(n => /^Button · (Save|Cancel)$/.test(n.name))) await b.setReactionsAsync([nav(own)]);
+
+    // ok: masaustu soldan, mobil sagdan
+    const sb = sub.absoluteBoundingBox, bb = ownEdit.absoluteBoundingBox;
+    const bx = figma.createRectangle(); sub.appendChild(bx);
+    bx.name = 'Clicked'; bx.x = bb.x - sb.x - 4; bx.y = bb.y - sb.y - 4; bx.resize(bb.width + 8, bb.height + 8);
+    bx.fills = []; bx.strokes = [{ type: 'SOLID', color: BLUE }]; bx.strokeWeight = 3; bx.cornerRadius = 26;
+    const by = bx.y + bx.height / 2, topY = own.y - 440, tx = f.x + f.width / 2;
+    const sx = desk ? bx.x : bx.x + bx.width, vx = desk ? own.x - 72 : own.x + own.width + 60;
+    const pts = [[sx, by], [vx, by], [vx, topY], [tx, topY], [tx, f.y]];
+    const { lab } = await elbow(sub, pts, 'Click Edit on Links · the card turns into its form', 'Flow · Edit links · ' + D, [bx]);
+    lab.x = f.x - lab.width - 24; lab.y = topY - lab.height - 8;
+
+    let rr = 0, bb2 = 0; for (const k of sub.children) { rr = Math.max(rr, k.x + k.width); bb2 = Math.max(bb2, k.y + k.height); }
+    sub.resizeWithoutConstraints(Math.max(sub.width, Math.ceil(rr + 80)), Math.max(sub.height, Math.ceil(bb2 + 80)));
+    const fw = form.findOne(n => n.type === 'INSTANCE' && /^Field · /.test(n.name));
+    out.push(D + ' · at ' + r(f.x) + ' · card ' + r(card.width) + 'x' + r(card.height) + ' · links ' + urls.length + ' · field ' + (fw ? r(fw.width) : '-') + ' · fill ' + hex(form.fills[0]));
+  });
+}
+report.info.pages = out;
+
+// ---------- B: 01 panosundaki Links · Editing gri kutuya ----------
+await step('board editing box', async () => {
+  const c2 = p01.findOne(n => n.name === 'Links · Editing');
+  if (!c2) throw new Error('Links · Editing not found');
+  const fl = c2.findOne(n => n.name === 'Link fields');
+  if (fl.parent.name === 'Links form') { report.info.board = 'already boxed'; return; }
+  const acts = c2.children.find(c => c.name === 'Edit actions');
+  const form = frame('Links form', 'VERTICAL'); GAP(form, 'spacing/md'); box(form, false);
+  c2.insertChild(c2.children.indexOf(fl), form); form.layoutSizingHorizontal = 'FILL';
+  form.appendChild(fl); fl.layoutSizingHorizontal = 'FILL';
+  if (acts) { form.appendChild(acts); acts.layoutSizingHorizontal = 'FILL'; }
+  report.info.board = 'boxed · ' + r(c2.width) + 'x' + r(c2.height) + ' · fill ' + hex(form.fills[0]);
+});
+
+await step('flow starts', async () => {
+  const keep = [];
+  for (const s of (p02.flowStartingPoints || [])) {
+    const n = await figma.getNodeByIdAsync(s.nodeId);
+    if (!n || /\/ Edit (details|career|positions|about|links) ·/.test(n.name)) continue;
+    if (keep.some(k => k.name === s.name)) continue;
+    keep.push({ nodeId: s.nodeId, name: s.name });
+  }
+  p02.flowStartingPoints = keep;
+  report.info.flowStarts = keep.length;
+});
 
 const BB = n => n.absoluteBoundingBox;
 function moveKeep(node, parent) { const b = BB(node), pb = BB(parent); parent.appendChild(node); node.x = b.x - pb.x; node.y = b.y - pb.y; }
 function fit(sec, pad) { let right = 0, bottom = 0; for (const k of sec.children) { right = Math.max(right, k.x + k.width); bottom = Math.max(bottom, k.y + k.height); } sec.resizeWithoutConstraints(Math.ceil(right + pad), Math.ceil(bottom + pad)); }
 const plat = name => p02.children.find(n => n.type === 'SECTION' && n.name === name);
 
-await step('own profile below', async () => {
+await step('contain children', async () => {
   const log = [];
+  function contain(sec) {
+    for (const c of sec.children.filter(k => k.type === 'SECTION')) contain(c);
+    if (sec.type !== 'SECTION' || sec.parent.type === 'PAGE') return;
+    let minX = Infinity, minY = Infinity; for (const k of sec.children) { minX = Math.min(minX, k.x); minY = Math.min(minY, k.y); }
+    const dx = minX < 80 ? Math.ceil(80 - minX) : 0, dy = minY < 80 ? Math.ceil(80 - minY) : 0;
+    if (dx || dy) { for (const k of sec.children) { k.x += dx; k.y += dy; } sec.x -= dx; sec.y -= dy; }
+    let right = 0, bottom = 0; for (const k of sec.children) { right = Math.max(right, k.x + k.width); bottom = Math.max(bottom, k.y + k.height); }
+    const w = Math.max(sec.width, Math.ceil(right + 80)), h = Math.max(sec.height, Math.ceil(bottom + 80));
+    if (dx || dy || w !== sec.width || h !== sec.height) { sec.resizeWithoutConstraints(w, h); log.push(sec.parent.name + ' › ' + sec.name + (dx || dy ? ' · grew left/up ' + dx + '/' + dy : '') + ' · ' + r(w) + 'x' + r(h)); }
+  }
+  for (const P_ of ['Web', 'Mobile']) contain(plat(P_));
+  report.info.contain = log.length ? log : 'nothing to fix';
+});
+
+await step('own profile below', async () => {
   for (const P_ of ['Web', 'Mobile']) {
     const ps = plat(P_);
     const own = ps.children.find(n => n.type === 'SECTION' && n.name === 'Own profile');
     let maxBottom = 0; for (const k of ps.children) if (k !== own && k.type === 'SECTION') maxBottom = Math.max(maxBottom, k.y + k.height);
-    const y0 = own.y; own.y = maxBottom + 160;
-    log.push(P_ + ' · own y ' + r(y0) + ' -> ' + r(own.y));
+    if (own.y < maxBottom + 160) own.y = maxBottom + 160;
   }
-  report.info.ownBelow = log;
 });
 
 await step('widen platforms', async () => {
