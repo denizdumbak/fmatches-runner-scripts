@@ -1,4 +1,4 @@
-// step 171 · Alt Section'lar cocuklarini icine alir: ustten ya da soldan tasan oklar ve notlar icin Section yukari/sola buyur, icerik yerinde kalir (Own profile, Profiles · player) · gerekirse Web/Mobile buyur · kontrol
+// step 172 · Own profile alt Section'i (171'de yukari buyudu) Profiles · other roles'un 160 altina iner · Web/Mobile yuksekligi · kontrol
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -86,20 +86,16 @@ function moveKeep(node, parent) { const b = BB(node), pb = BB(parent); parent.ap
 function fit(sec, pad) { let right = 0, bottom = 0; for (const k of sec.children) { right = Math.max(right, k.x + k.width); bottom = Math.max(bottom, k.y + k.height); } sec.resizeWithoutConstraints(Math.ceil(right + pad), Math.ceil(bottom + pad)); }
 const plat = name => p02.children.find(n => n.type === 'SECTION' && n.name === name);
 
-await step('contain children', async () => {
+await step('own profile below', async () => {
   const log = [];
-  function contain(sec) {
-    for (const c of sec.children.filter(k => k.type === 'SECTION')) contain(c);
-    if (sec.type !== 'SECTION' || sec.parent.type === 'PAGE') return;
-    let minX = Infinity, minY = Infinity; for (const k of sec.children) { minX = Math.min(minX, k.x); minY = Math.min(minY, k.y); }
-    const dx = minX < 80 ? Math.ceil(80 - minX) : 0, dy = minY < 80 ? Math.ceil(80 - minY) : 0;
-    if (dx || dy) { for (const k of sec.children) { k.x += dx; k.y += dy; } sec.x -= dx; sec.y -= dy; }
-    let right = 0, bottom = 0; for (const k of sec.children) { right = Math.max(right, k.x + k.width); bottom = Math.max(bottom, k.y + k.height); }
-    const w = Math.max(sec.width, Math.ceil(right + 80)), h = Math.max(sec.height, Math.ceil(bottom + 80));
-    if (dx || dy || w !== sec.width || h !== sec.height) { sec.resizeWithoutConstraints(w, h); log.push(sec.parent.name + ' › ' + sec.name + (dx || dy ? ' · grew left/up ' + dx + '/' + dy : '') + ' · ' + r(w) + 'x' + r(h)); }
+  for (const P_ of ['Web', 'Mobile']) {
+    const ps = plat(P_);
+    const own = ps.children.find(n => n.type === 'SECTION' && n.name === 'Own profile');
+    let maxBottom = 0; for (const k of ps.children) if (k !== own && k.type === 'SECTION') maxBottom = Math.max(maxBottom, k.y + k.height);
+    const y0 = own.y; own.y = maxBottom + 160;
+    log.push(P_ + ' · own y ' + r(y0) + ' -> ' + r(own.y));
   }
-  for (const P_ of ['Web', 'Mobile']) contain(plat(P_));
-  report.info.contain = log.length ? log : 'nothing to fix';
+  report.info.ownBelow = log;
 });
 
 await step('widen platforms', async () => {
