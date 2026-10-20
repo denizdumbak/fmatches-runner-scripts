@@ -1,4 +1,4 @@
-// step 166 · Edit details formu gri kutuya (Career satiri gibi, Cancel · Save sagda) · Own profile / Edit positions (Desktop + Mobile): ana mevki Select + yan mevkiler Multi-chip, saha onizleme olarak kalir · ok, prototip, akis baslangiclari
+// step 167 · Edit positions duzeltmesi: profildeki AM kodu formda CAM (DB listesi), ana mevki CAM, yan mevkiler RW + CM · 166'nin geri kalani tekrar calisir, degisiklik yapmaz
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -136,7 +136,7 @@ for (const D of ['Desktop', 'Mobile']) {
     const found = labels ? labels.findAll(n => n.type === 'TEXT').map(t => t.characters.trim()) : [];
     report.info['labels_' + D] = found;
     if (labels) labels.visible = false;
-    const codes = found.filter(t => NAMES[t]);
+    const ALIAS = { AM: 'CAM' }; const codes = found.map(t => ALIAS[t] || t).filter(t => NAMES[t]);
     const main = codes[0] || 'CAM', sec = codes.length > 1 ? codes.slice(1) : ['CM', 'RW'];
 
     const form = frame('Positions form', 'VERTICAL'); card.appendChild(form);
