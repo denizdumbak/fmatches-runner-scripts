@@ -1,4 +1,4 @@
-// step 173 · Own profile / Edit links (Desktop + Mobile): Links karti yerinde form, gri kutuda URL alanlari, x ile sil, Add link, Cancel · Save · 01 panosundaki Links · Editing de gri kutuya · ok, prototip · Section duzeni ve kontrol
+// step 174 · Own profile / Edit gallery (Desktop + Mobile): gri kutuda 3 sutunlu kare izgara, her fotoda x (sil), sonda kesik cerceveli Add photos karesi, surukle-sirala notu, Cancel · Save · ok (masaustu soldan, mobil alttan), prototip · Section duzeni ve kontrol
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -97,99 +97,96 @@ async function actions(parent) {
 const hex = p => p && p.color ? '#' + [p.color.r, p.color.g, p.color.b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('') : '-';
 
 
-async function linkBox(desk, urls) {
-  const form = frame('Links form', 'VERTICAL'); GAP(form, 'spacing/md'); box(form, false);
-  const fl = frame('Link fields', 'VERTICAL'); form.appendChild(fl); GAP(fl, 'spacing/md'); fl.layoutSizingHorizontal = 'FILL';
-  for (let i = 0; i < urls.length; i++) {
-    const line = frame('Link ' + (i + 1), 'HORIZONTAL'); fl.appendChild(line);
-    GAP(line, 'spacing/xs'); line.counterAxisAlignItems = 'MAX'; line.layoutSizingHorizontal = 'FILL';
-    const f = await field('Text', 'Filled', 'Link ' + (i + 1), urls[i]); line.appendChild(f); f.layoutSizingHorizontal = 'FILL';
-    const rm = frame('Remove', 'HORIZONTAL'); line.appendChild(rm);
-    rm.primaryAxisSizingMode = 'FIXED'; rm.counterAxisSizingMode = 'FIXED'; rm.resize(48, 48);
-    rm.primaryAxisAlignItems = 'CENTER'; rm.counterAxisAlignItems = 'CENTER'; rm.cornerRadius = 999;
-    rm.appendChild(icon('Icon · Remove', 'x', 20, 'color/icon/default'));
+// bagli boyalar dugum agaca eklenmeden once verilir (169: sonradan verilince yer tutucu gri kaliyor)
+function tileBase(name, w) { const t = figma.createFrame(); t.name = name; t.fills = []; t.clipsContent = false; t.resize(w, w); return t; }
+async function galleryBox(desk, photos, cardInner, heroFill) {
+  const form = frame('Gallery form', 'VERTICAL'); form.fills = REF.fills; GAP(form, 'spacing/md');
+  for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) form.setBoundVariable(c, V('radius/md'));
+  PAD(form, 'spacing/md', 'spacing/md', 'spacing/md', 'spacing/md');
+  const th = Math.floor((cardInner - 32 - 16) / 3);
+  const grid = frame('Gallery grid', 'HORIZONTAL'); grid.layoutWrap = 'WRAP'; GAP(grid, 'spacing/xs'); grid.setBoundVariable('counterAxisSpacing', V('spacing/xs'));
+  for (const p of photos) {
+    const tile = tileBase('Tile · ' + p.name, th);
+    const ph = p.clone(); tile.appendChild(ph); ph.x = 0; ph.y = 0; ph.resize(th, th);
+    const rm = figma.createFrame(); rm.name = 'Remove'; rm.fills = heroFill; rm.resize(32, 32); rm.cornerRadius = 999;
+    rm.layoutMode = 'HORIZONTAL'; rm.primaryAxisSizingMode = 'FIXED'; rm.counterAxisSizingMode = 'FIXED'; rm.primaryAxisAlignItems = 'CENTER'; rm.counterAxisAlignItems = 'CENTER';
+    rm.appendChild(icon('Icon · Remove', 'x', 16, 'color/icon/default'));
+    tile.appendChild(rm); rm.x = th - 32 - 4; rm.y = 4;
+    grid.appendChild(tile);
   }
-  const add = frame('Add link', 'HORIZONTAL'); fl.appendChild(add);
-  GAP(add, 'spacing/xs'); add.counterAxisAlignItems = 'CENTER'; add.paddingTop = 8; add.paddingBottom = 8;
-  add.appendChild(icon('Icon · Add', 'plus', 16, 'color/icon/brand'));
-  add.appendChild(await txt('Label', `Add link`, 'Label/Default Strong', 'color/text/brand'));
-  const hint = await txt('Hint', `Paste the full address. The type (video, profile, social, website) is read from it, and videos are listed first.`, 'Label/Small', 'color/text/secondary');
+  const add = figma.createFrame(); add.name = 'Add photos'; add.fills = heroFill;
+  add.strokes = [P(V('color/border/strong'))]; add.strokeWeight = 1.5; add.dashPattern = [6, 6]; add.strokeAlign = 'INSIDE';
+  add.layoutMode = 'VERTICAL'; add.primaryAxisSizingMode = 'FIXED'; add.counterAxisSizingMode = 'FIXED'; add.resize(th, th);
+  add.primaryAxisAlignItems = 'CENTER'; add.counterAxisAlignItems = 'CENTER'; add.itemSpacing = 4;
+  for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) add.setBoundVariable(c, V('radius/md'));
+  add.appendChild(icon('Icon · Add', 'plus', 20, 'color/icon/brand'));
+  add.appendChild(await txt('Label', `Add photos`, 'Label/Small', 'color/text/brand'));
+  grid.appendChild(add);
+  form.appendChild(grid); grid.layoutSizingHorizontal = 'FILL';
+  const hint = await txt('Hint', `Drag a photo to change the order. The first six show on your profile.`, 'Label/Small', 'color/text/secondary');
   form.appendChild(hint); hint.layoutSizingHorizontal = 'FILL'; hint.textAutoResize = 'HEIGHT';
   await actions(form);
-  return form;
+  return { form, th };
 }
-const BASE = { 'youtube.com': 'youtube.com/watch?v=leo-marsh-highlights', 'transfermarkt.com': 'transfermarkt.com/leo-marsh/profil', 'instagram.com': 'instagram.com/leomarsh10' };
 
-// ---------- A: Edit links ----------
 const out = [];
 for (const D of ['Desktop', 'Mobile']) {
-  await step('edit links · ' + D, async () => {
+  await step('edit gallery · ' + D, async () => {
     const desk = D === 'Desktop';
     const own = p02.findOne(n => n.type === 'FRAME' && n.name === 'Profiles / Player / Own profile · ' + D);
     const sub = own.parent;
-    const NAME = 'Profiles / Player / Own profile / Edit links · ' + D;
-    for (const n of sub.children.filter(c => c.name === NAME || c.name === 'Flow · Edit links · ' + D)) n.remove();
+    const NAME = 'Profiles / Player / Own profile / Edit gallery · ' + D;
+    for (const n of sub.children.filter(c => c.name === NAME || c.name === 'Flow · Edit gallery · ' + D)) n.remove();
     let right = 0; for (const k of sub.children) if (k.y < own.y + own.height && k.y + k.height > own.y) right = Math.max(right, k.x + k.width);
     const f = own.clone(); sub.appendChild(f);
     f.name = NAME; f.x = right + (desk ? 480 : 360); f.y = own.y;
     for (const n of f.findAll(n => n.reactions && n.reactions.length)) await n.setReactionsAsync([]);
 
-    const list = f.findOne(n => n.name === 'Link list');
-    if (!list) throw new Error('Link list not found');
-    const card = list.parent;
-    const domains = list.findAll(n => n.type === 'TEXT' && n.name === 'Domain').map(t => t.characters.trim());
-    report.info['domains_' + D] = domains;
-    const urls = domains.length ? domains.map(d => BASE[d] || (d + '/leo-marsh')) : Object.values(BASE);
+    const grid = f.findOne(n => n.name === 'Gallery grid');
+    if (!grid) throw new Error('Gallery grid not found');
+    const card = grid.parent;
+    const photos = grid.children.filter(c => /^Photo /.test(c.name));
+    const hero = f.findOne(n => n.name === 'Hero · player identity');
     const hdr = card.findOne(n => n.name === 'Card header');
     const he = hdr && hdr.children.find(c => c.name === 'Edit'); if (he) he.visible = false;
-    const form = await linkBox(desk, urls);
-    card.insertChild(card.children.indexOf(list), form); form.layoutSizingHorizontal = 'FILL';
-    list.remove();
+    const inner = card.width - card.paddingLeft - card.paddingRight;
+    const { form, th } = await galleryBox(desk, photos, inner, hero.fills);
+    card.insertChild(card.children.indexOf(grid), form); form.layoutSizingHorizontal = 'FILL';
+    grid.remove();
 
-    // prototip
-    const ownList = own.findOne(n => n.name === 'Link list');
-    const ownEdit = ownList.parent.findOne(n => n.name === 'Card header').children.find(c => c.name === 'Edit');
+    const ownGrid = own.findOne(n => n.name === 'Gallery grid');
+    const ownEdit = ownGrid.parent.findOne(n => n.name === 'Card header').children.find(c => c.name === 'Edit');
     await ownEdit.setReactionsAsync([nav(f)]);
     for (const b of form.findAll(n => /^Button · (Save|Cancel)$/.test(n.name))) await b.setReactionsAsync([nav(own)]);
 
-    // ok: masaustu soldan, mobil sagdan
     const sb = sub.absoluteBoundingBox, bb = ownEdit.absoluteBoundingBox;
     const bx = figma.createRectangle(); sub.appendChild(bx);
     bx.name = 'Clicked'; bx.x = bb.x - sb.x - 4; bx.y = bb.y - sb.y - 4; bx.resize(bb.width + 8, bb.height + 8);
     bx.fills = []; bx.strokes = [{ type: 'SOLID', color: BLUE }]; bx.strokeWeight = 3; bx.cornerRadius = 26;
-    const by = bx.y + bx.height / 2, topY = own.y - 440, tx = f.x + f.width / 2;
-    const sx = desk ? bx.x : bx.x + bx.width, vx = desk ? own.x - 72 : own.x + own.width + 60;
-    const pts = [[sx, by], [vx, by], [vx, topY], [tx, topY], [tx, f.y]];
-    const { lab } = await elbow(sub, pts, 'Click Edit on Links · the card turns into its form', 'Flow · Edit links · ' + D, [bx]);
-    lab.x = f.x - lab.width - 24; lab.y = topY - lab.height - 8;
+    const by = bx.y + bx.height / 2, tx = f.x + f.width / 2;
+    let pts, botY = 0, topY = 0;
+    if (desk) { topY = own.y - 500; const vx = own.x - 120; pts = [[bx.x, by], [vx, by], [vx, topY], [tx, topY], [tx, f.y]]; }
+    else {
+      let low = 0; for (const k of sub.children) if (k.type === 'FRAME' || k.type === 'GROUP') low = Math.max(low, k.y + k.height);
+      botY = low + 120; const vx = own.x + own.width + 220;
+      pts = [[bx.x + bx.width, by], [vx, by], [vx, botY], [tx, botY], [tx, f.y + f.height]];
+    }
+    const { lab } = await elbow(sub, pts, 'Click Edit on Gallery · the card turns into its form', 'Flow · Edit gallery · ' + D, [bx]);
+    lab.x = f.x - lab.width - 24; lab.y = desk ? topY - lab.height - 8 : botY + 12;
 
     let rr = 0, bb2 = 0; for (const k of sub.children) { rr = Math.max(rr, k.x + k.width); bb2 = Math.max(bb2, k.y + k.height); }
     sub.resizeWithoutConstraints(Math.max(sub.width, Math.ceil(rr + 80)), Math.max(sub.height, Math.ceil(bb2 + 80)));
-    const fw = form.findOne(n => n.type === 'INSTANCE' && /^Field · /.test(n.name));
-    out.push(D + ' · at ' + r(f.x) + ' · card ' + r(card.width) + 'x' + r(card.height) + ' · links ' + urls.length + ' · field ' + (fw ? r(fw.width) : '-') + ' · fill ' + hex(form.fills[0]));
+    const rmN = form.findOne(n => n.name === 'Remove');
+    out.push(D + ' · at ' + r(f.x) + ' · card ' + r(card.width) + 'x' + r(card.height) + ' · photos ' + photos.length + ' · thumb ' + th + ' · fill ' + hex(form.fills[0]) + ' · remove ' + hex(rmN.fills[0]));
   });
 }
 report.info.pages = out;
-
-// ---------- B: 01 panosundaki Links · Editing gri kutuya ----------
-await step('board editing box', async () => {
-  const c2 = p01.findOne(n => n.name === 'Links · Editing');
-  if (!c2) throw new Error('Links · Editing not found');
-  const fl = c2.findOne(n => n.name === 'Link fields');
-  if (fl.parent.name === 'Links form') { report.info.board = 'already boxed'; return; }
-  const acts = c2.children.find(c => c.name === 'Edit actions');
-  const form = frame('Links form', 'VERTICAL'); GAP(form, 'spacing/md'); box(form, false);
-  c2.insertChild(c2.children.indexOf(fl), form); form.layoutSizingHorizontal = 'FILL';
-  form.appendChild(fl); fl.layoutSizingHorizontal = 'FILL';
-  if (acts) { form.appendChild(acts); acts.layoutSizingHorizontal = 'FILL'; }
-  report.info.board = 'boxed · ' + r(c2.width) + 'x' + r(c2.height) + ' · fill ' + hex(form.fills[0]);
-});
 
 await step('flow starts', async () => {
   const keep = [];
   for (const s of (p02.flowStartingPoints || [])) {
     const n = await figma.getNodeByIdAsync(s.nodeId);
-    if (!n || /\/ Edit (details|career|positions|about|links) ·/.test(n.name)) continue;
+    if (!n || /\/ Edit (details|career|positions|about|links|gallery) ·/.test(n.name)) continue;
     if (keep.some(k => k.name === s.name)) continue;
     keep.push({ nodeId: s.nodeId, name: s.name });
   }
