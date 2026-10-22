@@ -1,63 +1,77 @@
-// step 180 · Salt okunur inspect: Silhouette component (Role x Size) ve sayfalardaki kullanimi (degisiklik yok)
+// step 181 · Silhouette: Role=Player varyantlari yeni erkek silueti (gorsel dolgu) ile degisir, Referee Player varyantina gecer; Role=Other'a dokunulmaz
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const pageOf = re => figma.root.children.find(p => re.test(p.name));
 const p01 = pageOf(/^01/), p02 = pageOf(/^02/);
 await p01.loadAsync(); await p02.loadAsync();
-const r0 = n => Math.round(n);
-const hex = p => p && p.color ? '#' + [p.color.r, p.color.g, p.color.b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('') : '-';
-function fillInfo(n) {
-  if (!('fills' in n) || n.fills === figma.mixed) return n.fills === figma.mixed ? 'mixed' : '-';
-  return n.fills.map(f => f.type === 'SOLID' ? hex(f) : f.type).join('+') || 'none';
-}
-function dump(n, depth, max) {
-  const o = { t: n.type, n: n.name, w: r0(n.width), h: r0(n.height), x: r0(n.x), y: r0(n.y), fill: fillInfo(n), op: n.opacity };
-  if ('layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE') o.abs = true;
-  if ('constraints' in n) o.c = n.constraints.horizontal + '/' + n.constraints.vertical;
-  if (depth < max && 'children' in n) o.kids = n.children.map(c => dump(c, depth + 1, max));
-  return o;
-}
+const r1 = n => Math.round(n * 10) / 10;
+const URL_M = 'https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/silhouettes/male-v1.png';
+let img = null, ratio = 1, set = null;
 
-let set = null;
-await step('component set', async () => {
+await step('load image and set', async () => {
+  img = await figma.createImageAsync(URL_M);
+  const s = await img.getSizeAsync(); ratio = s.height / s.width;
+  report.info.image = s.width + 'x' + s.height + ' ratio ' + r1(ratio);
   set = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Silhouette');
   if (!set) throw new Error('Silhouette set missing');
-  report.info.set = { id: set.id, props: Object.keys(set.componentPropertyDefinitions), variants: set.children.length };
-  report.info.variants = set.children.map(v => ({ name: v.name, id: v.id, w: r0(v.width), h: r0(v.height), clips: v.clipsContent, tree: dump(v, 0, 2) }));
 });
 
-await step('usage', async () => {
-  const rows = {}; const hosts = {};
-  const insts = p02.findAll(n => n.type === 'INSTANCE');
-  let total = 0;
-  for (const i of insts) {
-    const m = await i.getMainComponentAsync(); if (!m || !m.parent || m.parent !== set) continue;
-    total++;
-    const chain = []; let x = i.parent; while (x && x.type !== 'PAGE' && chain.length < 6) { chain.push(x.name); x = x.parent; }
-    const secs = chain.filter(c => /^(Web|Mobile)$/.test(c)).concat(chain.filter(c => /^(Home page|Profiles|Own profile|Sign up)/.test(c))).join(' > ');
-    const frame = chain.find(c => /^(Profiles|Home|Sign)/.test(c) && c.indexOf('·') < 0) || chain[chain.length - 3] || '';
-    const key = m.name + ' | ' + r0(i.width) + 'x' + r0(i.height) + ' | parent=' + (i.parent ? i.parent.name : '') + ' | abs=' + (i.layoutPositioning === 'ABSOLUTE') + ' | op=' + i.opacity;
-    rows[key] = (rows[key] || 0) + 1;
-    const hk = (i.parent ? i.parent.name : '') + ' / ' + (i.parent && i.parent.parent ? i.parent.parent.name : '');
-    hosts[hk] = (hosts[hk] || 0) + 1;
+await step('replace Role=Player variants', async () => {
+  if (!img || !set) throw new Error('skipped: image or set missing');
+  const placed = [];
+  for (const v of set.children) {
+    if (!/Role=Player/.test(v.name)) continue;
+    const W = v.width, H = v.height; const hero = /Hero/.test(v.name);
+    let w, h, x, y;
+    if (hero) { w = W; h = W * ratio; x = 0; y = H - h; }          // tam genislik, tabana basar
+    else { h = H * 0.9; w = h / ratio; x = (W - w) / 2; y = H - h; } // avatar boyutlari: kucuk bosluk, tabana basar
+    for (const c of v.children.slice()) c.remove();
+    const rect = figma.createRectangle();
+    rect.name = 'Silhouette image';
+    rect.resize(w, h);
+    rect.fills = [{ type: 'IMAGE', imageHash: img.hash, scaleMode: 'FILL' }];
+    v.appendChild(rect);
+    rect.x = x; rect.y = y;
+    rect.constraints = { horizontal: 'SCALE', vertical: 'SCALE' };
+    placed.push(v.name + ' > ' + r1(w) + 'x' + r1(h) + ' at ' + r1(x) + ',' + r1(y));
   }
-  report.info.instanceTotal = total; report.info.byVariantSizeParent = rows; report.info.hosts = hosts;
+  report.info.placed = placed;
 });
 
-await step('photo layers', async () => {
-  const names = {};
-  for (const n of p02.findAll(x => /photo|portrait|silhouette/i.test(x.name) && x.type !== 'INSTANCE' || /^Player photo/i.test(x.name))) {
-    const k = n.type + ' | ' + n.name + ' | ' + r0(n.width) + 'x' + r0(n.height) + ' | fill=' + fillInfo(n);
-    names[k] = (names[k] || 0) + 1;
+function topFrameName(i) {
+  let x = i;
+  while (x.parent && x.parent.type !== 'SECTION' && x.parent.type !== 'PAGE') x = x.parent;
+  return x.name;
+}
+async function variantOf(i) { const m = await i.getMainComponentAsync(); return m && m.parent === set ? m.name : null; }
+
+await step('Referee instances to Player variant', async () => {
+  const changed = [];
+  for (const i of p02.findAll(n => n.type === 'INSTANCE')) {
+    const vn = await variantOf(i); if (!vn) continue;
+    const top = topFrameName(i);
+    if (!/^Profiles \/ Referee/.test(top) || !/Role=Other/.test(vn)) continue;
+    const w = i.width, h = i.height;
+    const key = Object.keys(i.componentProperties).find(k => /^Role/.test(k));
+    const o = {}; o[key] = 'Player'; i.setProperties(o);
+    if (Math.round(i.width) !== Math.round(w) || Math.round(i.height) !== Math.round(h)) i.resize(w, h);
+    changed.push(top + ' : ' + vn + ' > ' + (await variantOf(i)));
   }
-  report.info.photoLayers = names;
+  report.info.refereeChanged = changed;
 });
 
-await step('sample hero', async () => {
-  const i = p02.findOne(n => n.type === 'INSTANCE' && n.name === 'Silhouette');
-  if (!i) { report.info.sample = 'no instance named Silhouette'; return; }
-  const m = await i.getMainComponentAsync();
-  report.info.sample = { path: (function () { const a = []; let x = i; while (x && x.type !== 'PAGE') { a.push(x.name); x = x.parent; } return a.slice(0, 7).join(' < '); })(), variant: m.name, parentLayout: i.parent && 'layoutMode' in i.parent ? i.parent.layoutMode : '-', parentSize: i.parent ? r0(i.parent.width) + 'x' + r0(i.parent.height) : '-' };
+await step('verify usage', async () => {
+  const rows = {};
+  for (const pg of [p01, p02]) {
+    for (const i of pg.findAll(n => n.type === 'INSTANCE')) {
+      const vn = await variantOf(i); if (!vn) continue;
+      const k = pg.name.slice(0, 2) + ' | ' + vn + ' | ' + topFrameName(i);
+      rows[k] = (rows[k] || 0) + 1;
+    }
+  }
+  report.info.usageAfter = rows;
+  const imgs = set.findAll(n => n.name === 'Silhouette image').map(n => n.parent.name + ' fill=' + (n.fills[0] ? n.fills[0].type : '-'));
+  report.info.imageLayers = imgs;
 });
 
 return report;
