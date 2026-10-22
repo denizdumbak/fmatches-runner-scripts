@@ -1,4 +1,4 @@
-// step 187 · Yeni uye profili (Signup sonrasi): Page notice component (01 › 6), Verification badge Status=Unverified, 02 › Own profile › New member (masaustu + mobil): ust serit, siluet + Add photo, bos kartlar (Links, About, Gallery), tek kariyer satiri, giris oku
+// step 188 (187'nin tamamlanmasi: rozet swapComponent ile) · Yeni uye profili (Signup sonrasi): Page notice component (01 › 6), Verification badge Status=Unverified, 02 › Own profile › New member (masaustu + mobil): ust serit, siluet + Add photo, bos kartlar (Links, About, Gallery), tek kariyer satiri, giris oku
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -129,6 +129,7 @@ await step('Page notice component', async () => {
   const set = figma.combineAsVariants(cs, sec6); set.name = 'Page notice';
   set.description = 'Page notice: a strip under the header for a state that needs the user’s attention, e.g. an email that is not verified yet. Device: Desktop, Mobile. Warning colours (bg/warning-subtle), mail icon, one sentence and an action link.\nDeveloper: shows until the email link is used. Unverified members cannot message members, send contact requests or book events.';
   report.info.noticeSize = cs.map(c => r(c.width) + 'x' + r(c.height)).join(' | ');
+  for (const o of sec6.findAll(n => n.type === 'TEXT' && n.name === 'Note · Page notice')) o.remove();
   const src = sec6.findOne(n => n.type === 'TEXT' && n.name === 'Note · Review');
   if (src) { const t = src.clone(); sec6.appendChild(t); await loadFonts(t); t.characters = 'Page notice: a strip under the header for a state that needs attention, such as an email that is not verified yet. Desktop and Mobile.'; t.name = 'Note · Page notice'; }
 });
@@ -217,7 +218,7 @@ for (const D of ['Desktop', 'Mobile']) {
       const rb = []; for (const i of dirHero.findAll(n => n.type === 'INSTANCE')) { const m = await i.getMainComponentAsync(); if (m && m.parent && m.parent.name === 'Verification badge') rb.push(i); }
       if (rb.length) { const src = rb[0], pn = src.parent.name; const target = hero.findOne(n => n.name === pn && n.type === 'FRAME'); if (target) { const b2 = src.clone(); target.insertChild(Math.min(src.parent.children.indexOf(src), target.children.length), b2); badges.push(b2); } }
     }
-    for (const b of badges) b.setProperties({ Status: 'Unverified' });
+    const uvSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Verification badge'); const uv = uvSet && uvSet.children.find(v => v.name === 'Status=Unverified'); if (!uv) throw new Error('Unverified variant missing in set'); for (const b of badges) b.swapComponent(uv);
     report.info['badges ' + D] = badges.length + (badges.length ? ' in ' + badges[0].parent.name : ' (none found)');
     // kartlar
     const body = pg.findOne(n => n.name === 'Profile body');
