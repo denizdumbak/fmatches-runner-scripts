@@ -1,41 +1,63 @@
-// step 179 · Yama: Google isareti orijinal 4 renkle (component, iki durum) · Sign up sayfalarinda mevki yazimi edit formuyla ayni (Select: "CAM · Attacking Midfield", cipler kisaltma kodu)
+// step 180 · Salt okunur inspect: Silhouette component (Role x Size) ve sayfalardaki kullanimi (degisiklik yok)
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const pageOf = re => figma.root.children.find(p => re.test(p.name));
 const p01 = pageOf(/^01/), p02 = pageOf(/^02/);
 await p01.loadAsync(); await p02.loadAsync();
-async function loadFonts(n) { for (const seg of n.getStyledTextSegments(['fontName'])) await figma.loadFontAsync(seg.fontName); }
+const r0 = n => Math.round(n);
+const hex = p => p && p.color ? '#' + [p.color.r, p.color.g, p.color.b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('') : '-';
+function fillInfo(n) {
+  if (!('fills' in n) || n.fills === figma.mixed) return n.fills === figma.mixed ? 'mixed' : '-';
+  return n.fills.map(f => f.type === 'SOLID' ? hex(f) : f.type).join('+') || 'none';
+}
+function dump(n, depth, max) {
+  const o = { t: n.type, n: n.name, w: r0(n.width), h: r0(n.height), x: r0(n.x), y: r0(n.y), fill: fillInfo(n), op: n.opacity };
+  if ('layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE') o.abs = true;
+  if ('constraints' in n) o.c = n.constraints.horizontal + '/' + n.constraints.vertical;
+  if (depth < max && 'children' in n) o.kids = n.children.map(c => dump(c, depth + 1, max));
+  return o;
+}
 
-const G_SVG = '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
-  '<path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>' +
-  '<path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>' +
-  '<path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>' +
-  '<path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>';
-
-await figma.setCurrentPageAsync(p01);
-await step('Google mark colours', async () => {
-  const set = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Google button'); if (!set) throw new Error('Google button set missing');
-  let k = 0;
-  for (const v of set.children) {
-    const old = v.findOne(n => n.name === 'Google mark'); if (!old) throw new Error('Google mark missing in ' + v.name);
-    const idx = v.children.indexOf(old); old.remove();
-    const f = figma.createNodeFromSvg(G_SVG); f.name = 'Google mark'; f.fills = []; f.clipsContent = false; f.rescale(20 / f.width);
-    v.insertChild(idx, f); k++;
-  }
-  report.info.googleMark = k + ' variants updated (4 brand colours)';
+let set = null;
+await step('component set', async () => {
+  set = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Silhouette');
+  if (!set) throw new Error('Silhouette set missing');
+  report.info.set = { id: set.id, props: Object.keys(set.componentPropertyDefinitions), variants: set.children.length };
+  report.info.variants = set.children.map(v => ({ name: v.name, id: v.id, w: r0(v.width), h: r0(v.height), clips: v.clipsContent, tree: dump(v, 0, 2) }));
 });
 
-await figma.setCurrentPageAsync(p02);
-await step('position labels', async () => {
-  const MAP = { 'Attacking Midfield': 'CAM · Attacking Midfield', 'Central Midfield': 'CM', 'Left Winger': 'LW', 'Central Midfield, Left Winger': 'CM, LW' };
-  let n = 0; const seen = {};
-  for (const P_ of ['Web', 'Mobile']) {
-    const ps = p02.children.find(x => x.type === 'SECTION' && x.name === P_); const sec = ps.children.find(x => x.type === 'SECTION' && x.name === 'Sign up');
-    for (const t of sec.findAll(x => x.type === 'TEXT' && MAP[x.characters] !== undefined && x.visible)) {
-      await loadFonts(t); const old = t.characters; t.characters = MAP[old]; n++; seen[old + ' > ' + MAP[old]] = (seen[old + ' > ' + MAP[old]] || 0) + 1;
-    }
+await step('usage', async () => {
+  const rows = {}; const hosts = {};
+  const insts = p02.findAll(n => n.type === 'INSTANCE');
+  let total = 0;
+  for (const i of insts) {
+    const m = await i.getMainComponentAsync(); if (!m || !m.parent || m.parent !== set) continue;
+    total++;
+    const chain = []; let x = i.parent; while (x && x.type !== 'PAGE' && chain.length < 6) { chain.push(x.name); x = x.parent; }
+    const secs = chain.filter(c => /^(Web|Mobile)$/.test(c)).concat(chain.filter(c => /^(Home page|Profiles|Own profile|Sign up)/.test(c))).join(' > ');
+    const frame = chain.find(c => /^(Profiles|Home|Sign)/.test(c) && c.indexOf('·') < 0) || chain[chain.length - 3] || '';
+    const key = m.name + ' | ' + r0(i.width) + 'x' + r0(i.height) + ' | parent=' + (i.parent ? i.parent.name : '') + ' | abs=' + (i.layoutPositioning === 'ABSOLUTE') + ' | op=' + i.opacity;
+    rows[key] = (rows[key] || 0) + 1;
+    const hk = (i.parent ? i.parent.name : '') + ' / ' + (i.parent && i.parent.parent ? i.parent.parent.name : '');
+    hosts[hk] = (hosts[hk] || 0) + 1;
   }
-  report.info.positionTexts = n; report.info.changed = seen;
+  report.info.instanceTotal = total; report.info.byVariantSizeParent = rows; report.info.hosts = hosts;
+});
+
+await step('photo layers', async () => {
+  const names = {};
+  for (const n of p02.findAll(x => /photo|portrait|silhouette/i.test(x.name) && x.type !== 'INSTANCE' || /^Player photo/i.test(x.name))) {
+    const k = n.type + ' | ' + n.name + ' | ' + r0(n.width) + 'x' + r0(n.height) + ' | fill=' + fillInfo(n);
+    names[k] = (names[k] || 0) + 1;
+  }
+  report.info.photoLayers = names;
+});
+
+await step('sample hero', async () => {
+  const i = p02.findOne(n => n.type === 'INSTANCE' && n.name === 'Silhouette');
+  if (!i) { report.info.sample = 'no instance named Silhouette'; return; }
+  const m = await i.getMainComponentAsync();
+  report.info.sample = { path: (function () { const a = []; let x = i; while (x && x.type !== 'PAGE') { a.push(x.name); x = x.parent; } return a.slice(0, 7).join(' < '); })(), variant: m.name, parentLayout: i.parent && 'layoutMode' in i.parent ? i.parent.layoutMode : '-', parentSize: i.parent ? r0(i.parent.width) + 'x' + r0(i.parent.height) : '-' };
 });
 
 return report;
