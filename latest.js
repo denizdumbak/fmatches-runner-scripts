@@ -1,4 +1,4 @@
-// step 188 (187'nin tamamlanmasi: rozet swapComponent ile) · Yeni uye profili (Signup sonrasi): Page notice component (01 › 6), Verification badge Status=Unverified, 02 › Own profile › New member (masaustu + mobil): ust serit, siluet + Add photo, bos kartlar (Links, About, Gallery), tek kariyer satiri, giris oku
+// step 189 (187-188'in duzeltmesi + armasiz ornek sayfa) · Unverified rozet varyanti sete appendChild ile alinir, set disinda kalan kopyalar silinir; New member sayfalari yeniden kurulur; 02 › Profiles · player: kulup var, arma yuklenmemis (hero arka plani bos, kucuk yuvalarda bos kalkan)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -78,6 +78,7 @@ function icon(name, key, size, color) {
   f.rescale(size / 24); return f;
 }
 
+const contains = (a, b) => { let x = b; while (x) { if (x === a) return true; x = x.parent; } return false; };
 const hex = p => p && p.color ? '#' + [p.color.r, p.color.g, p.color.b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('') : '-';
 const RAD = (n, v) => { for (const c of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) n.setBoundVariable(c, V(v)); };
 ICON.mail = 'M3 6h18v12H3zM3 7l9 7 9-7';
@@ -105,7 +106,7 @@ const sec6 = p01.children.find(n => n.type === 'SECTION' && /Sign-up/.test(n.nam
 
 await step('Page notice component', async () => {
   if (!sec6) throw new Error('section 6 missing');
-  for (const o of p01.findAll(n => n.type === 'COMPONENT_SET' && n.name === 'Page notice')) o.remove();
+  if (p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Page notice')) { report.info.notice = 'kept'; return; }
   const cs = [];
   for (const D of ['Desktop', 'Mobile']) {
     const desk = D === 'Desktop';
@@ -136,16 +137,18 @@ await step('Page notice component', async () => {
 
 await step('Unverified badge variant', async () => {
   const set = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Verification badge'); if (!set) throw new Error('Verification badge missing');
-  if (set.children.some(v => v.name === 'Status=Unverified')) { report.info.badge = 'already there'; return; }
+  let removed = 0; for (const o of p01.findAll(n => n.type === 'COMPONENT' && n.name === 'Status=Unverified')) { o.remove(); removed++; }
   const d = set.children.find(v => v.name === 'Status=Directory'); if (!d) throw new Error('Directory variant missing');
-  const oldRight = Math.max(...set.children.map(v => v.x + v.width)), pad = set.width - oldRight;
+  const pad = Math.min(...set.children.map(v => v.x)), oldRight = Math.max(...set.children.map(v => v.x + v.width));
   const u = d.clone(); u.name = 'Status=Unverified';
+  if (u.parent !== set) set.appendChild(u);
+  if (u.parent !== set) throw new Error('clone could not be moved into the set');
   const ts = u.findAll(n => n.type === 'TEXT'); if (!ts.length) throw new Error('no text in badge');
   await loadFonts(ts[0]); ts[0].characters = 'Email not verified'; ts[0].fills = [P(V('color/text/warning'))];
   fillV(u, 'color/bg/warning-subtle'); created.push(ts[0]);
   u.x = oldRight + 16; u.y = d.y;
   set.resizeWithoutConstraints(Math.ceil(u.x + u.width + pad), set.height);
-  report.info.badge = { children: u.children.map(c => c.type + ':' + c.name), size: r(u.width) + 'x' + r(u.height), strokes: u.strokes.length };
+  report.info.badge = { removedStray: removed, inSet: u.parent === set, variants: set.children.map(v => v.name), size: r(u.width) + 'x' + r(u.height) };
 });
 
 // section 6 yerlesim
@@ -251,9 +254,74 @@ for (const D of ['Desktop', 'Mobile']) {
   });
 }
 
+// ---------- armasiz ornek: kulup var, arma yuklenmemis ----------
+const SHIELD = 'M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.27,47,25.53a8,8,0,0,0,4.2,0c1-.26,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0Z';
+let NOCREST = null;
+await step('Club crest empty variants', async () => {
+  const set = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Club crest'); if (!set) throw new Error('Club crest set missing');
+  const defs = set.variantGroupProperties || {}; const keys = Object.keys(defs);
+  report.info.crestProps = keys.map(k => k + ': ' + defs[k].values.join('/')).join(' | ') + ' · ' + set.children.length + ' variants';
+  const old = set.children.filter(v => /No crest/.test(v.name)); for (const o of old) o.remove();
+  const kindKey = keys.find(k => !/size|device/i.test(k) && /club|crest|kind|name|type/i.test(k)) || keys.find(k => !/size|device/i.test(k));
+  if (!kindKey) throw new Error('no club property found');
+  const others = keys.filter(k => k !== kindKey);
+  const seen = {}; const bases = [];
+  for (const v of set.children) { const sig = others.map(k => v.variantProperties[k]).join('|'); if (!seen[sig]) { seen[sig] = 1; bases.push(v); } }
+  const right0 = Math.max(...set.children.map(v => v.x + v.width)), bottom0 = Math.max(...set.children.map(v => v.y + v.height)), pad = Math.min(...set.children.map(v => v.x));
+  let x = right0 + 16, made = [];
+  for (const b of bases) {
+    const w = b.width, h = b.height, props = Object.assign({}, b.variantProperties); props[kindKey] = 'No crest';
+    const u = b.clone(); if (u.parent !== set) set.appendChild(u);
+    u.name = keys.map(k => k + '=' + props[k]).join(', ');
+    for (const ch of u.children.slice()) ch.remove();
+    u.layoutMode = 'NONE'; u.resizeWithoutConstraints(w, h); u.fills = []; u.strokes = []; u.clipsContent = false;
+    const sh = figma.createNodeFromSvg('<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><path d="' + SHIELD + '" fill="#000000"/></svg>');
+    sh.name = 'Empty shield'; sh.fills = []; sh.clipsContent = false;
+    for (const vv of sh.findAll(n => n.type === 'VECTOR')) { vv.fills = [P(V('color/border/strong'))]; vv.constraints = { horizontal: 'SCALE', vertical: 'SCALE' }; }
+    u.appendChild(sh); const side = Math.min(w, h) * 0.8; sh.resize(side, side); sh.x = (w - side) / 2; sh.y = (h - side) / 2;
+    u.x = x; u.y = b.y; x += w + 16; made.push(u.name + ' ' + r(w) + 'x' + r(h));
+  }
+  set.resizeWithoutConstraints(Math.ceil(x - 16 + pad), set.height);
+  NOCREST = set.children.filter(v => /No crest/.test(v.name));
+  report.info.crestEmpty = made;
+});
+const CRESTLESS = {};
+for (const D of ['Desktop', 'Mobile']) {
+  await step('no crest page · ' + D, async () => {
+    const desk = D === 'Desktop', W = desk ? 1440 : 390;
+    const ps = p02.children.find(n => n.type === 'SECTION' && n.name === NAME_OF[D]);
+    const sub = ps.children.find(n => n.type === 'SECTION' && n.name === 'Profiles · player'); if (!sub) throw new Error('Profiles · player sub-section missing');
+    const newName = 'Profiles / Player / No crest uploaded · ' + D;
+    for (const o of sub.children.filter(n => n.name === newName || n.name === 'Note · No crest · ' + D)) o.remove();
+    const base = sub.children.find(n => n.type === 'FRAME' && n.name === 'Profiles / Player · ' + D); if (!base) throw new Error('Player page missing: ' + sub.children.map(n => n.name).join(' ; '));
+    let right = 0; for (const k of sub.children) if (k.y < base.y + 200 && k.type === 'FRAME') right = Math.max(right, k.x + k.width);
+    const pg = base.clone(); pg.name = newName; if (pg.parent !== sub) sub.appendChild(pg);
+    for (const n of [pg].concat(pg.findAll(x => x.reactions && x.reactions.length))) { try { await n.setReactionsAsync([]); } catch (e) {} }
+    pg.x = right + (desk ? 480 : 360); pg.y = base.y;
+    const hero = pg.findOne(n => n.name === 'Hero · player identity'); if (!hero) throw new Error('hero missing');
+    const crests = []; for (const i of pg.findAll(n => n.type === 'INSTANCE')) { const m = await i.getMainComponentAsync(); if (m && m.parent && m.parent.type === 'COMPONENT_SET' && m.parent.name === 'Club crest') crests.push(i); }
+    let hidden = 0, swapped = 0, failed = [];
+    for (const i of crests) {
+      const inHero = contains(hero, i), big = i.layoutPositioning === 'ABSOLUTE' && i.parent === hero;
+      if (big) { i.visible = false; hidden++; continue; }
+      const m = await i.getMainComponentAsync(); const others = Object.keys(m.variantProperties).filter(k => !/club|crest|kind|name|type/i.test(k));
+      const match = (NOCREST || []).find(v => others.every(k => v.variantProperties[k] === m.variantProperties[k])) || (NOCREST || [])[0];
+      if (!match) { failed.push(i.name); continue; }
+      try { i.swapComponent(match); swapped++; } catch (e) { failed.push(i.name + ': ' + e.message); }
+    }
+    report.info['noCrest ' + D] = 'crest instances ' + crests.length + ' · hidden ' + hidden + ' · swapped ' + swapped + (failed.length ? ' · failed ' + failed.join('; ') : '');
+    const note = await txt('Note · No crest · ' + D, 'Developer note: the club exists but its crest file is not on the server. The faded hero background stays empty and the small crest slots keep their place with an empty shield.', 'Label/Small', 'color/text/warning');
+    sub.appendChild(note); note.textAutoResize = 'HEIGHT'; note.resize(Math.min(W, 440), note.height); note.x = pg.x; note.y = pg.y + pg.height + 40;
+    let rr = 0, bb = 0; for (const k of sub.children) { rr = Math.max(rr, k.x + k.width); bb = Math.max(bb, k.y + k.height); }
+    sub.resizeWithoutConstraints(Math.max(sub.width, Math.ceil(rr + 80)), Math.max(sub.height, Math.ceil(bb + 80)));
+    CRESTLESS[D] = pg;
+  });
+}
+
+
 await step('flow starts', async () => {
   const keep = [];
-  for (const s of (p02.flowStartingPoints || [])) { const n = await figma.getNodeByIdAsync(s.nodeId); if (!n || /New member/.test(n.name)) continue; if (keep.some(k => k.name === s.name)) continue; keep.push({ nodeId: s.nodeId, name: s.name }); }
+  for (const s of (p02.flowStartingPoints || [])) { const n = await figma.getNodeByIdAsync(s.nodeId); if (!n || /New member|No crest uploaded/.test(n.name)) continue; if (keep.some(k => k.name === s.name)) continue; keep.push({ nodeId: s.nodeId, name: s.name }); }
   p02.flowStartingPoints = keep; report.info.flowStarts = keep.length;
 });
 const plat = name => p02.children.find(n => n.type === 'SECTION' && n.name === name);
