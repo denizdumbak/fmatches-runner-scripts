@@ -1,4 +1,4 @@
-// step 210 · 209 + Map card'a ikincil eylem: "View stadium" (tek secimli turler arasinda kopru; Sergey'in 'clubs only / stadiums only' ifadesine uygun)
+// step 211 · Map sayfalari duzeltme: Legend etiketi (sayi yerine aciklama), cift switcher, View stadium ikonu (Tabler building-stadium), zemin goruntuleri sag-alt izsiz (v2), Berlin kart/liste metinleri Berlin'e uygun
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -54,7 +54,7 @@ await step('Map card component', async () => {
   }
   report.info.cardButton = btnInfo;
   const sec = figma.createFrame(); sec.name = 'Secondary action'; sec.layoutMode = 'HORIZONTAL'; sec.primaryAxisSizingMode = 'AUTO'; sec.counterAxisSizingMode = 'AUTO'; sec.counterAxisAlignItems = 'CENTER'; sec.fills = []; GAP(sec, 'spacing/xs');
-  const si = figma.createNodeFromSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h16M4 10l2 8h12l2-8M8 10V7a4 4 0 018 0v3"/></svg>');
+  const si = figma.createNodeFromSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 2 0 1 0 16 0a8 2 0 1 0 -16 0"/><path d="M4 12v7c0 .94 2.51 1.785 6 2v-3h4v3c3.435 -.225 6 -1.07 6 -2v-7"/><path d="M15 6h4v-3h-4v7"/><path d="M7 6h4v-3h-4v7"/></svg>');
   si.name = 'Icon'; si.fills = []; si.resize(16, 16);
   const wk = x => { if ('children' in x) x.children.forEach(wk); if (x.type !== 'FRAME' && x.type !== 'GROUP') { if (x.strokes && x.strokes.length) x.strokes = [P(V('color/text/brand'))]; x.constraints = { horizontal: 'SCALE', vertical: 'SCALE' }; } };
   wk(si); sec.appendChild(si);
@@ -102,9 +102,19 @@ await step('Map type switcher component', async () => {
   await figma.setCurrentPageAsync(p02);
 });
 
+// Legend yardimcisi: satir gorunurlugu + aciklama metni (Label adli metin; cluster sayisi '12' kalir)
+async function setLegend(lg, showClubs, clusterLabel) {
+  for (const nm of ['Row · Clubs', 'Row · Stadiums', 'Row · Events', 'Row · Teams looking for an opponent']) { const lr = lg.findOne(n => n.name === nm); if (lr) lr.visible = (nm === 'Row · Clubs' && showClubs); }
+  const cr = lg.findOne(n => n.name === 'Row · Cluster'); if (!cr) return 'no cluster row';
+  const lab = cr.children.find(n => n.type === 'TEXT' && n.name === 'Label'); if (lab) await setText(lab, clusterLabel);
+  const ci = cr.children.find(n => n.type === 'INSTANCE'); const cnt = ci && ci.findOne(n => n.type === 'TEXT'); if (cnt && cnt.characters !== '12') await setText(cnt, '12');
+  return (lab ? lab.characters : '-') + ' / ' + (cnt ? cnt.characters : '-');
+}
+
 // 1d. Her iki sayfada: Show chip satirini switcher ile degistir
 async function applySwitcher(pg, active) {
   const filters = pg.findOne(n => n.name === 'Filters'); if (!filters) return 'no Filters';
+  for (const k of filters.children.slice()) if (k.name === 'Type switcher') k.remove();
   const old = filters.children.find(n => n.name === 'Show');
   const i = old ? filters.children.indexOf(old) : 0;
   const inst = created.switcher.children.find(v => v.name === 'Active=' + active).createInstance();
@@ -118,14 +128,14 @@ async function applySwitcher(pg, active) {
 await step('Default map: legend + sparse irregular markers', async () => {
   const pg = mapSec.children.find(n => n.name === 'Map / Default · Desktop'); if (!pg) throw new Error('default page missing');
   const area = pg.findOne(n => n.name === 'Map area'); const W = area.width, H = area.height;
-  const sc = Math.max(W / 1830, H / 1000), ox = (W - 1830 * sc) / 2, oy = (H - 1000 * sc) / 2;
+  const sc = Math.max(W / 1600, H / 859), ox = (W - 1600 * sc) / 2, oy = (H - 859 * sc) / 2 - 141 * sc;
   for (const k of area.children.slice()) if (/^(Cluster|Marker) ·/.test(k.name)) k.remove();
   const lg = area.findOne(n => n.name === 'Legend');
-  for (const nm of ['Row · Clubs', 'Row · Stadiums', 'Row · Events', 'Row · Teams looking for an opponent']) { const lr = lg.findOne(n => n.name === nm); if (lr) lr.visible = false; }
-  const cRow = lg.findOne(n => n.name === 'Row · Cluster'); if (cRow) { const ct = cRow.findOne(n => n.type === 'TEXT'); if (ct) await setText(ct, 'Clubs grouped by area. Zoom in to see each club.'); }
+  report.info.legendDefault = await setLegend(lg, false, 'Clubs grouped by area. Zoom in to see each club.');
+  const eb = area.findOne(n => n.name === 'Map base · Europe'); if (eb) { const im = await figma.createImageAsync('https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/map/europe-z5-v2.png'); eb.fills = [{ type: 'IMAGE', scaleMode: 'FILL', imageHash: im.hash }]; }
   lg.x = W - 16 - lg.width; lg.y = 16;
   const at = area.children.indexOf(lg);
-  const CL = [[715, 360, 312], [585, 300, 48], [840, 470, 276], [1010, 415, 439], [1115, 720, 187], [1295, 365, 71], [1180, 150, 38], [1540, 640, 27], [690, 820, 92]];
+  const CL = [[715, 360, 312], [585, 300, 48], [840, 470, 276], [1010, 415, 439], [1115, 720, 187], [1295, 365, 71], [1180, 215, 38], [1540, 640, 27], [690, 820, 92]];
   for (const [x, y, n] of CL) { const sz = n >= 200 ? 'L' : n >= 50 ? 'M' : 'S'; const i = clusterSet.children.find(c => c.name === 'Size=' + sz).createInstance(); i.name = 'Cluster · ' + n; area.insertChild(at, i); const t = i.findOne(k => k.type === 'TEXT'); if (t) await setText(t, String(n)); i.x = Math.round(ox + x * sc - i.width / 2); i.y = Math.round(oy + y * sc - i.height / 2); }
   report.info.defaultSwitcher = await applySwitcher(pg, 'Clubs');
   const pn = pg.findOne(n => n.name === 'Map panel');
@@ -145,7 +155,7 @@ await step('Map / Club card · Desktop', async () => {
   const area = cp.findOne(n => n.name === 'Map area'), panel = cp.findOne(n => n.name === 'Map panel'), legend = cp.findOne(n => n.name === 'Legend');
   for (const k of area.children.slice()) if (/^Cluster ·/.test(k.name)) k.remove();
   const base = area.findOne(n => n.name === 'Map base · Europe'); base.name = 'Map base · Berlin';
-  const img = await figma.createImageAsync('https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/map/city-z12.png'); base.fills = [{ type: 'IMAGE', scaleMode: 'FILL', imageHash: img.hash }];
+  const img = await figma.createImageAsync('https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/map/city-z12-v2.png'); base.fills = [{ type: 'IMAGE', scaleMode: 'FILL', imageHash: img.hash }];
   const at = area.children.indexOf(legend);
   const mv = (kind, state) => markerSet.children.find(c => c.name === 'Kind=' + kind + ', State=' + state);
   const M = [['Club', 498, 254], ['Club', 552, 500], ['Club', 586, 536], ['Club', 540, 568], ['Club', 624, 478], ['Club', 668, 652], ['Club', 884, 548], ['Club', 1004, 494], ['Club', 1188, 404], ['Club', 1262, 666], ['Club', 706, 206], ['Club', 950, 700], ['Club', 1130, 540]];
@@ -157,9 +167,13 @@ await step('Map / Club card · Desktop', async () => {
   if (t1) await setText(t1, '20 clubs in view'); if (t2) await setText(t2, 'Berlin and surroundings'); if (t3) await setText(t3, 'Show all 20 clubs');
   report.info.cardSwitcher = await applySwitcher(cp, 'Clubs');
   const lg2 = cp.findOne(n => n.name === 'Legend');
-  if (lg2) { for (const nm of ['Row · Stadiums', 'Row · Events', 'Row · Teams looking for an opponent']) { const lr = lg2.findOne(n => n.name === nm); if (lr) lr.visible = false; }
-    const cr = lg2.findOne(n => n.name === 'Row · Cluster'); if (cr) { const ct = cr.findOne(n => n.type === 'TEXT'); if (ct) await setText(ct, 'A few clubs still too close together'); }
-    lg2.x = cp.findOne(n => n.name === 'Map area').width - 16 - lg2.width; lg2.y = 16; }
+  if (lg2) { report.info.legendCard = await setLegend(lg2, true, 'Clubs still close together. Zoom in to separate.'); lg2.x = area.width - 16 - lg2.width; lg2.y = 16; }
+  const setIn = async (root, nm, str) => { const t = root.findOne(n => n.type === 'TEXT' && n.name === nm); if (t) await setText(t, str); return !!t; };
+  await setIn(card, 'Name', 'Spreeufer FC'); await setIn(card, 'Meta', 'Regional League · Tier 3'); await setIn(card, 'Location', 'Mitte, Berlin');
+  const RB = [['Spreeufer FC', 'Regional League · Tier 3 · Mitte'], ['Nordpark SC', 'Fifth Division · Tier 5 · Wedding'], ['Havelblick United', 'Fourth Division · Tier 4 · Spandau']];
+  const resB = panel.findOne(n => n.name === 'Results');
+  if (resB) for (let i = 0; i < resB.children.length && i < RB.length; i++) { await setIn(resB.children[i], 'Name', RB[i][0]); await setIn(resB.children[i], 'Meta', RB[i][1]); }
+  report.info.berlinRows = resB ? resB.children.map(r => { const t = r.findOne(n => n.type === 'TEXT' && n.name === 'Name'); return t ? t.characters : '?'; }).join(', ') : 'none';
   const res = panel.findOne(n => n.name === 'Results'); const r0 = res && res.children[0]; if (r0) { r0.fills = [P(V('color/bg/subtle'))]; RAD(r0, 'radius/md'); r0.name = r0.name + ' · selected'; }
   report.info.card = Math.round(card.x) + ',' + Math.round(card.y) + ' ' + Math.round(card.width) + 'x' + Math.round(card.height) + ' (area ' + Math.round(area.width) + 'x' + Math.round(area.height) + ')';
   created.page = cp;
