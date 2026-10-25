@@ -1,4 +1,4 @@
-// step 200 · 01 › 7 · Map: Map marker (Kind x State), Map cluster (Size), Legend; ikonlar hazir setten (Phosphor shield, Tabler building-stadium, Lucide calendar-days ve swords; MIT / ISC)
+// step 201 · (200'un duzeltmesi: legend'da kayma ve tasma) 01 › 7 · Map: Map marker (Kind x State), Map cluster (Size), Legend; ikonlar hazir setten (Phosphor shield, Tabler building-stadium, Lucide calendar-days ve swords; MIT / ISC)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -25,7 +25,7 @@ const ICONS = {"Club": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 
 const KINDS = ['Club', 'Stadium', 'Event', 'Match request'];
 const KVAR = { 'Club': 'color/map/club', 'Stadium': 'color/map/facility', 'Event': 'color/map/event', 'Match request': 'color/map/request' };
 function icon(kind, size) {
-  const n = figma.createNodeFromSvg(ICONS[kind]); n.name = 'Icon'; n.fills = []; n.clipsContent = false; n.resize(size, size);
+  const n = figma.createNodeFromSvg(ICONS[kind]); n.name = 'Icon'; n.fills = []; n.clipsContent = false; n.resize(size, size); n.constraints = { horizontal: 'SCALE', vertical: 'SCALE' };
   const iv = V('color/icon/inverse');
   const walk = x => { if ('children' in x) x.children.forEach(walk); if (x.type !== 'FRAME' && x.type !== 'GROUP') {
     if (x.fills && x.fills !== figma.mixed && x.fills.length) x.fills = [P(iv)];
@@ -89,12 +89,12 @@ await step('Legend', async () => {
   const marker = created.marker;
   for (const [kind, label] of rows) {
     const row = figma.createFrame(); row.name = 'Row · ' + label; row.layoutMode = 'HORIZONTAL'; row.counterAxisAlignItems = 'CENTER'; row.primaryAxisSizingMode = 'AUTO'; row.counterAxisSizingMode = 'AUTO'; row.fills = []; GAP(row, 'spacing/sm');
-    const v = marker.children.find(ch => ch.name === 'Kind=' + kind + ', State=Default'); const inst = v.createInstance(); inst.name = 'Marker'; inst.resize(28, 28);
-    row.appendChild(inst); const t = await txt(label, S_LABEL, 'color/text/primary'); t.name = 'Label'; row.appendChild(t); lg.appendChild(row);
+    const v = marker.children.find(ch => ch.name === 'Kind=' + kind + ', State=Default'); const inst = v.createInstance(); inst.name = 'Marker';
+    row.appendChild(inst); const t = await txt(label, S_LABEL, 'color/text/primary'); t.name = 'Label'; row.appendChild(t); lg.appendChild(row); row.layoutAlign = 'STRETCH'; t.layoutGrow = 1; t.textAutoResize = 'HEIGHT';
   }
   const row = figma.createFrame(); row.name = 'Row · Cluster'; row.layoutMode = 'HORIZONTAL'; row.counterAxisAlignItems = 'CENTER'; row.primaryAxisSizingMode = 'AUTO'; row.counterAxisSizingMode = 'AUTO'; row.fills = []; GAP(row, 'spacing/sm');
-  const ci = created.cluster.children.find(ch => ch.name === 'Size=S').createInstance(); ci.name = 'Cluster'; ci.resize(28, 28);
-  row.appendChild(ci); const t2 = await txt('Several in one area, click to zoom in', S_LABEL, 'color/text/primary'); t2.name = 'Label'; row.appendChild(t2); lg.appendChild(row);
+  const ci = created.cluster.children.find(ch => ch.name === 'Size=S').createInstance(); ci.name = 'Cluster';
+  row.appendChild(ci); const t2 = await txt('Several in one area, click to zoom in', S_LABEL, 'color/text/primary'); t2.name = 'Label'; row.appendChild(t2); lg.appendChild(row); row.layoutAlign = 'STRETCH'; t2.layoutGrow = 1; t2.textAutoResize = 'HEIGHT';
   lg.description = 'Legend. Lives in the left panel of the map; one row per type plus the cluster. Rows follow the Show chips (hidden types are removed).';
   sec.appendChild(lg); lg.x = 80; lg.y = created.cluster.y + created.cluster.height + 80; created.legend = lg;
   report.info.legendSize = Math.round(lg.width) + 'x' + Math.round(lg.height);
