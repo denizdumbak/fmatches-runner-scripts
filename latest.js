@@ -1,4 +1,4 @@
-// step 209 · Tur secimi tek secimli oldu (Map type switcher segmented control); uzak zoom sadece beyaz baloncuk, yakin zoom ikon; iki harita sayfasi buna gore guncellendi
+// step 210 · 209 + Map card'a ikincil eylem: "View stadium" (tek secimli turler arasinda kopru; Sergey'in 'clubs only / stadiums only' ifadesine uygun)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -53,8 +53,15 @@ await step('Map card component', async () => {
     c.appendChild(b); b.layoutAlign = 'STRETCH'; btnInfo = 'variant ' + bv.name + ' props ' + Object.keys(cp).join(',');
   }
   report.info.cardButton = btnInfo;
+  const sec = figma.createFrame(); sec.name = 'Secondary action'; sec.layoutMode = 'HORIZONTAL'; sec.primaryAxisSizingMode = 'AUTO'; sec.counterAxisSizingMode = 'AUTO'; sec.counterAxisAlignItems = 'CENTER'; sec.fills = []; GAP(sec, 'spacing/xs');
+  const si = figma.createNodeFromSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h16M4 10l2 8h12l2-8M8 10V7a4 4 0 018 0v3"/></svg>');
+  si.name = 'Icon'; si.fills = []; si.resize(16, 16);
+  const wk = x => { if ('children' in x) x.children.forEach(wk); if (x.type !== 'FRAME' && x.type !== 'GROUP') { if (x.strokes && x.strokes.length) x.strokes = [P(V('color/text/brand'))]; x.constraints = { horizontal: 'SCALE', vertical: 'SCALE' }; } };
+  wk(si); sec.appendChild(si);
+  const st = await txt('View stadium', S_LABEL, 'color/text/brand'); st.name = 'Label'; sec.appendChild(st);
+  c.appendChild(sec);
   const set = figma.combineAsVariants([c], sec7); set.name = 'Map card';
-  set.description = 'Map card. Opens when a marker is clicked, next to it; the page behind does not change. Kind: Club (this one), Stadium, Event, Match request (to come). Close (x) or Esc dismisses it.';
+  set.description = 'Map card. Opens when a marker is clicked, next to it; the page behind does not change. Kind: Club (this one), Stadium, Event, Match request (to come). Close (x) or Esc dismisses it. The View stadium link switches the map to Stadiums and selects this club ground, since only one type is shown at a time.';
   const row = sec7.children.find(n => n.name === 'Map result row'); set.x = row.x + row.width + 80; set.y = row.y; created.card = set;
   report.info.cardSize = Math.round(c.width) + 'x' + Math.round(c.height);
   await figma.setCurrentPageAsync(p02);
