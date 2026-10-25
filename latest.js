@@ -1,4 +1,4 @@
-// step 203 · (202'nin duzeltmesi: resize() sonrasi AUTO yukseklik; cip satirlari, ozet, sonuc satiri kesiliyordu) 02 › Web › Map: "Map / Default · Desktop" (tam ekran harita, Avrupa, sayili cluster'lar, 400 px panel, Legend, zoom kontrolleri); yeni component'ler Map result row ve Map controls (01 › 7 · Map); cluster sayisi ortalama duzeltmesi
+// step 204 · (203'un devami: varsayilan hal yalniz Clubs + Stadiums acik, Event type gizli, Tier tek satir, Legend yalniz acik turler) // step 203 · (202'nin duzeltmesi: resize() sonrasi AUTO yukseklik; cip satirlari, ozet, sonuc satiri kesiliyordu) 02 › Web › Map: "Map / Default · Desktop" (tam ekran harita, Avrupa, sayili cluster'lar, 400 px panel, Legend, zoom kontrolleri); yeni component'ler Map result row ve Map controls (01 › 7 · Map); cluster sayisi ortalama duzeltmesi
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -89,7 +89,7 @@ await step('Map / Default · Desktop', async () => {
     inst.x = Math.round(ox + x * sc - inst.width / 2); inst.y = Math.round(oy + y * sc - inst.height / 2);
   }
   // legend + zoom
-  const lg = legendComp.createInstance(); lg.name = 'Legend'; area.appendChild(lg); lg.x = W - 16 - lg.width; lg.y = 16;
+  const lg = legendComp.createInstance(); lg.name = 'Legend'; for (const nm of ['Row · Events', 'Row · Teams looking for an opponent']) { const lr = lg.findOne(n => n.name === nm); if (lr) lr.visible = false; } area.appendChild(lg); lg.x = W - 16 - lg.width; lg.y = 16;
   const zc = created.controls.createInstance(); zc.name = 'Map controls'; area.appendChild(zc); zc.x = W - 16 - zc.width; zc.y = H - 16 - zc.height;
   // panel
   const panel = figma.createFrame(); panel.name = 'Map panel'; panel.layoutMode = 'VERTICAL'; panel.primaryAxisSizingMode = 'FIXED'; panel.counterAxisSizingMode = 'FIXED'; panel.resize(400, H - 32); panel.clipsContent = true;
@@ -108,10 +108,10 @@ await step('Map / Default · Desktop', async () => {
     const h = f.findOne(n => n.name === 'Helper'); if (h) h.visible = false; const er = f.findOne(n => n.name === 'Error message'); if (er) er.visible = false;
     if (w) f.resize(w, f.height); return f;
   }
-  async function chipRow(name, label, items, onSet) {
-    const g = figma.createFrame(); g.name = name; g.layoutMode = 'VERTICAL'; g.primaryAxisSizingMode = 'AUTO'; g.counterAxisSizingMode = 'AUTO'; g.fills = []; GAP(g, 'spacing/xs');
+  async function chipRow(name, label, items, onSet, inline) {
+    const g = figma.createFrame(); g.name = name; g.layoutMode = inline ? 'HORIZONTAL' : 'VERTICAL'; g.primaryAxisSizingMode = 'AUTO'; g.counterAxisSizingMode = 'AUTO'; if (inline) g.counterAxisAlignItems = 'CENTER'; g.fills = []; GAP(g, 'spacing/sm');
     const lb = await txt(label, S_SMALL, 'color/text/secondary'); lb.name = 'Group label'; g.appendChild(lb);
-    const row = figma.createFrame(); row.name = 'Chips'; row.layoutMode = 'HORIZONTAL'; row.layoutWrap = 'WRAP'; row.primaryAxisSizingMode = 'FIXED'; row.counterAxisSizingMode = 'AUTO'; row.resize(352, 32); row.counterAxisSizingMode = 'AUTO'; row.fills = []; GAP(row, 'spacing/xs'); row.counterAxisSpacing = 8;
+    const row = figma.createFrame(); row.name = 'Chips'; row.layoutMode = 'HORIZONTAL'; row.layoutWrap = 'WRAP'; row.primaryAxisSizingMode = 'FIXED'; row.counterAxisSizingMode = 'AUTO'; row.resize(352, 32); row.counterAxisSizingMode = 'AUTO'; row.fills = []; GAP(row, 'spacing/xs'); row.counterAxisSpacing = 8; if (inline) { row.layoutWrap = 'NO_WRAP'; row.primaryAxisSizingMode = 'AUTO'; row.counterAxisSizingMode = 'AUTO'; }
     g.appendChild(row);
     for (const it of items) { const c = (onSet.indexOf(it) >= 0 ? chipOn : chipOff).createInstance(); c.name = 'Chip · ' + it; const t = c.findOne(n => n.type === 'TEXT'); if (t) await setText(t, it); row.appendChild(c); }
     return g;
@@ -119,15 +119,14 @@ await step('Map / Default · Desktop', async () => {
   const search = await field('Text', '', 'Search city, club or facility', 0); panel.appendChild(search); search.layoutAlign = 'STRETCH';
   const filters = figma.createFrame(); filters.name = 'Filters'; filters.layoutMode = 'VERTICAL'; filters.primaryAxisSizingMode = 'AUTO'; filters.counterAxisSizingMode = 'AUTO'; filters.fills = []; GAP(filters, 'spacing/md');
   panel.appendChild(filters); filters.layoutAlign = 'STRETCH';
-  filters.appendChild(await chipRow('Show', 'Show', ['Clubs', 'Stadiums', 'Events', 'Match requests'], ['Clubs', 'Stadiums', 'Events', 'Match requests']));
+  filters.appendChild(await chipRow('Show', 'Show', ['Clubs', 'Stadiums', 'Events', 'Match requests'], ['Clubs', 'Stadiums']));
   const sel = figma.createFrame(); sel.name = 'Selects'; sel.layoutMode = 'HORIZONTAL'; sel.primaryAxisSizingMode = 'AUTO'; sel.counterAxisSizingMode = 'AUTO'; sel.fills = []; GAP(sel, 'spacing/sm');
   sel.appendChild(await field('Select', 'Country', 'All countries', 170)); sel.appendChild(await field('Select', 'League', 'All leagues', 170)); filters.appendChild(sel);
-  filters.appendChild(await chipRow('Event type', 'Event type', ['Match', 'Tournament', 'Trial'], []));
-  filters.appendChild(await chipRow('Tier', 'Tier', ['1', '2', '3', '4', '5'], []));
+  filters.appendChild(await chipRow('Tier', 'Tier', ['1', '2', '3', '4', '5'], [], true));
   const sum = figma.createFrame(); sum.name = 'Summary'; sum.layoutMode = 'HORIZONTAL'; sum.primaryAxisSizingMode = 'FIXED'; sum.counterAxisSizingMode = 'AUTO'; sum.counterAxisAlignItems = 'CENTER'; sum.resize(352, 24); sum.counterAxisSizingMode = 'AUTO'; sum.fills = [];
   const sL = figma.createFrame(); sL.name = 'Counts'; sL.layoutMode = 'VERTICAL'; sL.primaryAxisSizingMode = 'AUTO'; sL.counterAxisSizingMode = 'AUTO'; sL.fills = []; GAP(sL, 'spacing/2xs');
-  const s1 = await txt('1,543 in view', S_STRONG, 'color/text/primary'); s1.name = 'Total'; sL.appendChild(s1);
-  const s2 = await txt('1,284 clubs · 212 stadiums · 38 events · 9 requests', S_SMALL, 'color/text/secondary'); s2.name = 'Breakdown'; sL.appendChild(s2);
+  const s1 = await txt('1,496 in view', S_STRONG, 'color/text/primary'); s1.name = 'Total'; sL.appendChild(s1);
+  const s2 = await txt('1,284 clubs · 212 stadiums', S_SMALL, 'color/text/secondary'); s2.name = 'Breakdown'; sL.appendChild(s2);
   sum.appendChild(sL); sL.layoutGrow = 1; const clr = await txt('Clear all', S_LABEL, 'color/text/brand'); clr.name = 'Clear all'; sum.appendChild(clr);
   panel.appendChild(sum); sum.layoutAlign = 'STRETCH';
   const list = figma.createFrame(); list.name = 'Results'; list.layoutMode = 'VERTICAL'; list.primaryAxisSizingMode = 'AUTO'; list.counterAxisSizingMode = 'AUTO'; list.fills = [];
@@ -140,7 +139,7 @@ await step('Map / Default · Desktop', async () => {
     if (nm) await setText(nm, ROWS[i][0]); if (mt) await setText(mt, ROWS[i][1]);
     const cr = r.findOne(n => n.type === 'INSTANCE' && n.name === 'Club crest'); if (cr && crestV[i % crestV.length]) cr.swapComponent(crestV[i % crestV.length]);
   }
-  const all = await txt('Show all 1,543 results', S_LABEL, 'color/text/brand'); all.name = 'Show all'; panel.appendChild(all);
+  const all = await txt('Show all 1,496 results', S_LABEL, 'color/text/brand'); all.name = 'Show all'; panel.appendChild(all);
   // tasma: sigmayan satirlari sil
   const content = () => panel.children.reduce((a, c) => a + c.height, 0) + (panel.children.length - 1) * panel.itemSpacing + panel.paddingTop + panel.paddingBottom;
   let guard = 0; while (content() > panel.height && list.children.length > 1 && guard++ < 10) list.children[list.children.length - 1].remove();
