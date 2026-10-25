@@ -1,4 +1,4 @@
-// step 207 · Map / Club card · Desktop: Berlin marker dagilimi duzensizlestirildi (yogun ceplenme + tek kalanlar); Map card + Default sayfa adimlari onceki haliyle korunuyor
+// step 208 · Default sayfa: daha fazla tekil stadyum marker'i (tur ayrimi gorunsun) + tek turlu cluster'lara tur rengi kenarlik; digerleri 207 ile ayni
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -74,9 +74,17 @@ await step('Default map: legend + sparse irregular markers', async () => {
   const at = area.children.indexOf(lg);
   const CL = [[715, 360, 312], [585, 300, 48], [840, 470, 276], [1010, 415, 439], [1115, 720, 187], [1295, 365, 71], [1180, 150, 38], [1540, 640, 27], [690, 820, 92]];
   for (const [x, y, n] of CL) { const sz = n >= 200 ? 'L' : n >= 50 ? 'M' : 'S'; const i = clusterSet.children.find(c => c.name === 'Size=' + sz).createInstance(); i.name = 'Cluster · ' + n; area.insertChild(at, i); const t = i.findOne(k => k.type === 'TEXT'); if (t) await setText(t, String(n)); i.x = Math.round(ox + x * sc - i.width / 2); i.y = Math.round(oy + y * sc - i.height / 2); }
-  const SG = [['Club', 945, 235], ['Club', 1395, 520], ['Stadium', 1245, 615], ['Club', 615, 600], ['Club', 1470, 250], ['Stadium', 780, 650]];
+  const SG = [['Club', 945, 235], ['Club', 1395, 520], ['Stadium', 1245, 615], ['Club', 615, 600], ['Club', 1470, 250], ['Stadium', 780, 650], ['Stadium', 1058, 318], ['Stadium', 870, 112], ['Stadium', 1632, 452], ['Stadium', 505, 438], ['Club', 1210, 880]];
   for (const [kind, x, y] of SG) { const i = markerSet.children.find(c => c.name === 'Kind=' + kind + ', State=Default').createInstance(); i.name = 'Marker · ' + kind; area.insertChild(at, i); i.x = Math.round(ox + x * sc - i.width / 2); i.y = Math.round(oy + y * sc - i.height / 2); }
+  const TINT = { 0: null, 1: 'color/map/club', 2: 'color/map/facility' };
+  for (const [nm, kind] of [['Cluster · 48', 1], ['Cluster · 27', 1], ['Cluster · 38', 2]]) {
+    const c = area.children.find(n => n.name === nm); if (!c) continue;
+    const circle = c.findOne(n => n.type === 'ELLIPSE') || c;
+    if (circle.strokes && circle.strokes.length) { circle.strokes = [P(V(TINT[kind]))]; circle.strokeWeight = 3; }
+    c.name = nm + ' · ' + (kind === 1 ? 'clubs only' : 'stadiums only');
+  }
   report.info.legendH = Math.round(lg.height);
+  report.info.defaultCounts = 'clusters ' + area.children.filter(n => /^Cluster/.test(n.name)).length + ' · singles ' + area.children.filter(n => /^Marker/.test(n.name)).length;
 });
 
 // 2. Sayfa: Default'un kopyasi
