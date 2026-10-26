@@ -1,4 +1,4 @@
-// step 215 · Map key haritadan tamamen kaldirildi (Legend component, Map key button, sayfa ornekleri)
+// step 216 · Map / Match requests · Desktop + Map / Stadium card · Desktop (Events sayfasinin kopyasindan)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -28,23 +28,76 @@ const setIn = async (root, nm, str) => { const t = root.findOne(n => n.type === 
 
 
 
-await step('Remove Map key from pages', async () => {
-  let n = 0;
-  for (const pg of mapSec.children) for (const k of pg.findAll(x => x.name === 'Legend' || x.name === 'Map key button · collapsed')) { k.remove(); n++; }
-  report.info.removedInstances = n;
+
+async function applySwitcher(pg, active) {
+  const sset = set01('Map type switcher'); const filters = pg.findOne(n => n.name === 'Filters'); if (!filters) return 'no Filters';
+  for (const k of filters.children.slice()) if (k.name === 'Type switcher') k.remove();
+  const inst = sset.children.find(v => v.name === 'Active=' + active).createInstance(); inst.name = 'Type switcher';
+  filters.insertChild(0, inst); inst.layoutAlign = 'STRETCH'; return 'ok';
+}
+
+const cardSet = set01('Map card');
+async function buildPage(pageName, cfg) {
+  const ev = mapSec.children.find(n => n.name === 'Map / Events · Desktop'); if (!ev) throw new Error('events page missing');
+  const old = mapSec.children.find(n => n.name === pageName); if (old) old.remove();
+  const prev = mapSec.children.filter(n => /^Map \//.test(n.name) && n.name !== pageName).sort((a, b) => b.x - a.x)[0];
+  const cp = ev.clone(); cp.name = pageName; mapSec.appendChild(cp); cp.x = prev.x + prev.width + 480; cp.y = ev.y;
+  const area = cp.findOne(n => n.name === 'Map area'), panel = cp.findOne(n => n.name === 'Map panel');
+  // marker turu
+  let keep = 0;
+  for (const m of area.children.slice()) {
+    if (m.name === 'Marker · Event') { if (keep >= cfg.singles) { m.remove(); continue; } keep++; m.swapComponent(mv(cfg.marker, 'Default')); m.name = 'Marker · ' + cfg.marker; }
+    else if (m.name === 'Marker · Event · selected') { m.swapComponent(mv(cfg.marker, 'Selected')); m.name = 'Marker · ' + cfg.marker + ' · selected'; }
+    else if (/^Cluster ·/.test(m.name)) { if (cfg.clusters.indexOf(m.name.replace('Cluster · ', '')) < 0) m.remove(); }
+  }
+  // kart
+  const oc = area.findOne(n => /^Map card/.test(n.name)); const nc = cardSet.children.find(v => v.name === 'Kind=' + cfg.kind).createInstance();
+  nc.name = 'Map card · ' + cfg.card.name; area.appendChild(nc); nc.x = oc.x; nc.y = oc.y; oc.remove();
+  await setIn(nc, 'Name', cfg.card.name); await setIn(nc, 'Meta', cfg.card.meta); await setIn(nc, 'Location', cfg.card.loc); if (cfg.card.date) await setIn(nc, 'Date', cfg.card.date);
+  // filtreler
+  const filters = cp.findOne(n => n.name === 'Filters'); report.info[pageName + ' switcher'] = await applySwitcher(cp, cfg.switcher);
+  for (const nm of cfg.dropFields) { const f = filters.findOne(n => n.name === 'Field · ' + nm); if (f) f.remove(); }
+  if (cfg.dates) { const f = filters.findOne(n => n.name === 'Field · Dates'); if (f) await setIn(f, 'Value', cfg.dates); }
+  // panel
+  const t1 = panel.findOne(n => n.type === 'TEXT' && n.name === 'Total'), t2 = panel.findOne(n => n.type === 'TEXT' && n.name === 'Breakdown'), t3 = panel.findOne(n => n.type === 'TEXT' && n.name === 'Show all');
+  if (t1) await setText(t1, cfg.total); if (t2) await setText(t2, 'Berlin and surroundings'); if (t3) await setText(t3, cfg.showAll);
+  const res = panel.findOne(n => n.name === 'Results');
+  for (let i = 0; i < res.children.length && i < cfg.rows.length; i++) {
+    const row = res.children[i]; await setIn(row, 'Name', cfg.rows[i][0]); await setIn(row, 'Meta', cfg.rows[i][1]);
+    const ic = row.findOne(n => n.type === 'INSTANCE' && n.name === 'Map marker'); if (ic) ic.swapComponent(mv(cfg.marker, 'Default'));
+  }
+  const A = nc.absoluteBoundingBox; const hits = [];
+  for (const o of area.children) { if (o === nc || !o.visible || /^Map (base|tint)/.test(o.name)) continue; const B = o.absoluteBoundingBox; if (B && A.x < B.x + B.width && B.x < A.x + A.width && A.y < B.y + B.height && B.y < A.y + A.height) hits.push(o.name); }
+  report.info[pageName + ' cardOverlaps'] = hits.length ? hits : 'none';
+  report.info[pageName + ' counts'] = 'singles ' + area.children.filter(n => /^Marker · /.test(n.name) && !/selected/.test(n.name)).length + ' · clusters ' + area.children.filter(n => /^Cluster ·/.test(n.name)).length + ' · filters ' + filters.children.map(n => n.name).join(', ');
+  return cp;
+}
+
+await step('Map / Match requests · Desktop', async () => {
+  created.req = await buildPage('Map / Match requests · Desktop', {
+    kind: 'Match request', marker: 'Match request', switcher: 'Requests', singles: 6, clusters: ['2'], dropFields: ['Event type'], dates: 'Sat 8 – Sun 9 Nov',
+    card: { name: 'Nordpark SC', meta: 'Fifth Division · Tier 5', date: 'Sat 8 – Sun 9 Nov', loc: 'Wedding, Berlin' },
+    total: '9 requests in view', showAll: 'Show all 9 requests',
+    rows: [['Nordpark SC', 'Sat 8 – Sun 9 Nov · Wedding'], ['Havelblick United', 'Sun 9 Nov · Spandau'], ['Spreeufer FC', 'Sat 15 Nov · Mitte']]
+  });
 });
-await step('Remove Map key components', async () => {
-  await figma.setCurrentPageAsync(p01);
-  const gone = [];
-  for (const k of sec7.children.filter(x => x.name === 'Legend' || x.name === 'Map key button')) { gone.push(k.name); k.remove(); }
-  report.info.removedComponents = gone.length ? gone : 'none';
-  let r7 = 0, b7 = 0; for (const ch of sec7.children) { r7 = Math.max(r7, ch.x + ch.width); b7 = Math.max(b7, ch.y + ch.height); } sec7.resizeWithoutConstraints(Math.max(1200, Math.ceil(r7 + 80)), Math.ceil(b7 + 80));
-  await figma.setCurrentPageAsync(p02);
+await step('Map / Stadium card · Desktop', async () => {
+  created.std = await buildPage('Map / Stadium card · Desktop', {
+    kind: 'Stadium', marker: 'Stadium', switcher: 'Stadiums', singles: 5, clusters: ['2'], dropFields: ['Event type', 'Dates'], dates: null,
+    card: { name: 'Spreeufer Stadium', meta: 'Natural grass · 4,200 capacity', date: null, loc: 'Mitte, Berlin' },
+    total: '8 stadiums in view', showAll: 'Show all 8 stadiums',
+    rows: [['Spreeufer Stadium', 'Natural grass · 4,200 · Mitte'], ['Nordpark Sportplatz', 'Artificial turf · 1,800 · Wedding'], ['Havelblick Arena', 'Natural grass · 3,100 · Spandau']]
+  });
 });
+
 await step('check', async () => {
-  const left = []; for (const pg of mapSec.children) for (const k of pg.findAll(x => /Legend|Map key/.test(x.name))) left.push(pg.name + ': ' + k.name);
-  report.info.keyLeftovers = left.length ? left : 'none';
+  const gray = [], unst = []; const walk = n => { if ('fills' in n && n.fills !== figma.mixed) n.fills.forEach(f => { if (f.type === 'SOLID' && hex(f) === '#808080') gray.push(n.name); }); if (n.type === 'TEXT' && !n.textStyleId) unst.push(n.name); if ('children' in n) n.children.forEach(walk); };
+  for (const p of [created.req, created.std]) if (p) walk(p);
+  report.info.grayFills = gray.length ? gray.slice(0, 8) : 'none'; report.info.unstyledText = unst.length ? unst.slice(0, 8) : 'none';
+  let right = 0, bottom = 0; for (const ch of mapSec.children) { right = Math.max(right, ch.x + ch.width); bottom = Math.max(bottom, ch.y + ch.height); }
+  mapSec.resizeWithoutConstraints(Math.max(mapSec.width, Math.ceil(right + 80)), Math.max(mapSec.height, Math.ceil(bottom + 80)));
+  const ovl = []; const top = p02.children.filter(n => n.type === 'SECTION'); for (let i = 0; i < top.length; i++) for (let j = i + 1; j < top.length; j++) { const a = top[i], b = top[j]; if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) ovl.push(a.name + ' x ' + b.name); }
+  report.info.overlap02 = ovl.length ? ovl : 'none'; report.info.mapSection = Math.round(mapSec.width) + 'x' + Math.round(mapSec.height) + ' · web ' + Math.round(web.width) + 'x' + Math.round(web.height);
   report.info.mapPages = mapSec.children.map(c => c.name).join(' | ');
-  const sets = sec7.children.map(c => c.name).join(' | '); report.info.sec7 = sets;
 });
 return report;
