@@ -1,4 +1,4 @@
-// step 211 · Map sayfalari duzeltme: Legend etiketi (sayi yerine aciklama), cift switcher, View stadium ikonu (Tabler building-stadium), zemin goruntuleri sag-alt izsiz (v2), Berlin kart/liste metinleri Berlin'e uygun
+// step 212 · Map key: dort tur satiri her zaman gorunur (ikon = anlam), baloncuk satiri kaldirildi
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -104,8 +104,9 @@ await step('Map type switcher component', async () => {
 
 // Legend yardimcisi: satir gorunurlugu + aciklama metni (Label adli metin; cluster sayisi '12' kalir)
 async function setLegend(lg, showClubs, clusterLabel) {
-  for (const nm of ['Row · Clubs', 'Row · Stadiums', 'Row · Events', 'Row · Teams looking for an opponent']) { const lr = lg.findOne(n => n.name === nm); if (lr) lr.visible = (nm === 'Row · Clubs' && showClubs); }
+  for (const nm of ['Row · Clubs', 'Row · Stadiums', 'Row · Events', 'Row · Teams looking for an opponent']) { const lr = lg.findOne(n => n.name === nm); if (lr) lr.visible = true; }
   const cr = lg.findOne(n => n.name === 'Row · Cluster'); if (!cr) return 'no cluster row';
+  cr.visible = false;
   const lab = cr.children.find(n => n.type === 'TEXT' && n.name === 'Label'); if (lab) await setText(lab, clusterLabel);
   const ci = cr.children.find(n => n.type === 'INSTANCE'); const cnt = ci && ci.findOne(n => n.type === 'TEXT'); if (cnt && cnt.characters !== '12') await setText(cnt, '12');
   return (lab ? lab.characters : '-') + ' / ' + (cnt ? cnt.characters : '-');
