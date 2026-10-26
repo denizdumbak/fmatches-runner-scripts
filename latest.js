@@ -1,4 +1,4 @@
-// step 213 · Map card varyantlari (Event, Match request, Stadium) + Map / Events · Desktop
+// step 213 · Map card varyantlari (Event, Match request, Stadium) + Map / Events · Desktop (v2: varyantlar sete eklenir)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -43,6 +43,8 @@ await step('Map card variants', async () => {
   const set = set01('Map card'); if (!set) throw new Error('Map card set missing');
   for (const v of set.children.slice()) if (v.name !== 'Kind=Club') v.remove();
   const base = set.children.find(v => v.name === 'Kind=Club');
+  const strayRe = /^Kind=(Event|Match request|Stadium)$/;
+  for (const n of p01.findAll(k => k.type === 'COMPONENT' && k.parent !== set && strayRe.test(k.name))) n.remove();
   const calSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>';
   const cfgs = [
     { kind: 'Event', marker: 'Event', name: 'Autumn Friendly Cup', meta: 'Tournament · 8 teams', date: 'Sat 8 Nov · 10:00', loc: 'Mitte, Berlin', btn: 'View event', sec: null },
@@ -51,7 +53,7 @@ await step('Map card variants', async () => {
   ];
   let x = base.x + base.width + 40;
   for (const c of cfgs) {
-    const v = base.clone(); v.name = 'Kind=' + c.kind;
+    const v = base.clone(); set.appendChild(v); v.name = 'Kind=' + c.kind;
     const head = v.findOne(n => n.name === 'Head'); const crest = head.findOne(n => n.type === 'INSTANCE' && n.name === 'Club crest');
     const m = mv(c.marker, 'Default').createInstance(); m.name = 'Map marker'; head.insertChild(0, m); if (crest) crest.remove();
     await setIn(v, 'Name', c.name); await setIn(v, 'Meta', c.meta); await setIn(v, 'Location', c.loc);
