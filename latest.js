@@ -1,4 +1,4 @@
-// step 213 · Map card varyantlari (Event, Match request, Stadium) + Map / Events · Desktop (v2: varyantlar sete eklenir)
+// step 213 · Map card varyantlari (Event, Match request, Stadium) + Map / Events · Desktop (v3: satir ikonu swapComponent)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -127,7 +127,7 @@ await step('Map / Events · Desktop', async () => {
   if (res) for (let i = 0; i < res.children.length && i < RB.length; i++) {
     const row = res.children[i]; await setIn(row, 'Name', RB[i][0]); await setIn(row, 'Meta', RB[i][1]);
     const cr = row.findOne(n => n.type === 'INSTANCE' && /crest/i.test(n.name));
-    if (cr) { const par = cr.parent; const idx = par.children.indexOf(cr); const m = mv(['Event', 'Event', 'Event'][i], 'Default').createInstance(); m.name = 'Map marker'; par.insertChild(idx, m); cr.remove(); }
+    if (cr) { cr.swapComponent(mv('Event', 'Default')); cr.name = 'Map marker'; }
   }
   const r0 = res && res.children[0]; if (r0) { r0.fills = [P(V('color/bg/subtle'))]; RAD(r0, 'radius/md'); r0.name = r0.name + ' · selected'; }
   const lg2 = cp.findOne(n => n.name === 'Legend'); if (lg2) { report.info.legend = await setLegend(lg2, true, 'Events close together. Zoom in to separate.'); lg2.x = area.width - 16 - lg2.width; lg2.y = 16; }
