@@ -1,4 +1,4 @@
-// step 226 · Mobile map group 1: Map / Default · Mobile (Half), Club card · Mobile (Handle + card), List · Mobile (Full); move Map empty state into 7 · Map
+// step 227 · Mobile map group 2: card screens for Stadium, Events, Match requests, Scout (Handle sheet + card)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -32,7 +32,7 @@ async function buildScreen(name, i, mapKind, sheetKind) {
   return { f, area };
 }
 const cluster = async (area, cx, cy, n) => { const sz = n >= 200 ? 'L' : n >= 50 ? 'M' : 'S'; const i = clusterSet.children.find(c => c.name === 'Size=' + sz).createInstance(); i.name = 'Cluster · ' + n; area.appendChild(i); await setIn(i, 'Label', String(n)) || (i.findOne(k => k.type === 'TEXT') && await setText(i.findOne(k => k.type === 'TEXT'), String(n))); place(i, cx, cy); return i; };
-const marker = (area, cx, cy, state) => { const m = markerSet.children.find(c => c.name === 'Kind=Club, State=' + state); const i = m.createInstance(); i.name = state === 'Selected' ? 'Marker · Club · selected' : 'Marker · Club'; area.appendChild(i); place(i, cx, cy); return i; };
+const marker = (area, cx, cy, state, kind) => { kind = kind || 'Club'; const m = markerSet.children.find(c => c.name === 'Kind=' + kind + ', State=' + state); if (!m) throw new Error('marker variant missing: ' + kind + ' ' + state); const i = m.createInstance(); i.name = state === 'Selected' ? 'Marker · ' + kind + ' · selected' : 'Marker · ' + kind; area.appendChild(i); place(i, cx, cy); return i; };
 async function addSheet(f, kind, total, brk) {
   const v = sheetSet.children.find(c => c.name === 'Height=' + kind); const s = v.createInstance(); s.name = 'Bottom sheet · ' + kind; f.appendChild(s); s.x = 0; s.y = H - s.height;
   if (total) await setIn(s, 'Total', total); if (brk) await setIn(s, 'Breakdown', brk); return s;
@@ -40,42 +40,34 @@ async function addSheet(f, kind, total, brk) {
 async function addHeader(f) { for (const [src, nm] of [[tickerSrc, 'Ticker'], [navSrc, 'Navigation']]) { const c = src.clone(); c.name = nm; f.appendChild(c); c.x = 0; c.y = src === tickerSrc ? 0 : 36; } }
 function addControls(f, above) { const c = ctrl.createInstance(); c.name = 'Map controls'; f.appendChild(c); c.x = W - 44 - 16; c.y = above - 96 - 16; }
 
-await step('Map / Default · Mobile', async () => {
-  const { f, area } = await buildScreen('Map / Default · Mobile', 0, 'europe');
-  for (const [x, y, n] of [[96, 120, 439], [262, 96, 127], [320, 250, 86], [84, 330, 212], [210, 210, 41], [160, 400, 27]]) await cluster(area, x, y, n);
-  const s = await addSheet(f, 'Half', '1,496 clubs in view', 'Grouped while zoomed out'); addControls(f, s.y); await addHeader(f);
-  report.info.defaultSheet = s.name + ' y' + Math.round(s.y);
-});
-await step('Map / Club card · Mobile', async () => {
-  const { f, area } = await buildScreen('Map / Club card · Mobile', 1, 'city');
-  for (const [x, y] of [[60, 60], [310, 70], [150, 120], [60, 210], [330, 230], [250, 40], [40, 320], [345, 350], [120, 560], [290, 560], [60, 600]]) marker(area, x, y, 'Default');
-  await cluster(area, 200, 590, 4); await cluster(area, 330, 470, 2);
-  marker(area, 195, 215, 'Selected');
-  const card = cardSet.children.find(c => c.name === 'Kind=Club').createInstance(); card.name = 'Map card · Club'; f.appendChild(card); card.x = Math.round((W - card.width) / 2); card.y = TOP + 255;
-  const s = await addSheet(f, 'Handle'); addControls(f, s.y); await addHeader(f);
-  report.info.card = Math.round(card.x) + ',' + Math.round(card.y) + ' ' + Math.round(card.width) + 'x' + Math.round(card.height);
-});
-await step('Map / List · Mobile', async () => {
-  const { f, area } = await buildScreen('Map / List · Mobile', 2, 'city');
-  for (const [x, y] of [[60, 20], [310, 30], [150, 36]]) marker(area, x, y, 'Default');
-  const s = await addSheet(f, 'Full'); await addHeader(f);
-});
-await step('Map empty state into 7 · Map', async () => {
-  await figma.setCurrentPageAsync(p01);
-  const sec7 = p01.children.find(n => n.type === 'SECTION' && /^7 /.test(n.name)); const emp = p01.children.find(n => n.type === 'COMPONENT' && n.name === 'Map empty state');
-  if (!emp) { report.info.empty = 'already inside a section or missing'; return; }
-  const sh = sec7.children.find(n => n.name === 'Bottom sheet'); const ex = emp.absoluteBoundingBox, sb = sec7.absoluteBoundingBox;
-  sec7.appendChild(emp); emp.x = 80; emp.y = sh ? Math.ceil(sh.y + sh.height + 120) : 80;
-  let r7 = 0, b7 = 0; for (const ch of sec7.children) { r7 = Math.max(r7, ch.x + ch.width); b7 = Math.max(b7, ch.y + ch.height); }
-  sec7.resizeWithoutConstraints(Math.max(sec7.width, Math.ceil(r7 + 80)), Math.ceil(b7 + 80)); report.info.empty = 'moved to ' + Math.round(emp.x) + ',' + Math.round(emp.y);
-  await figma.setCurrentPageAsync(p02);
-});
+
+const CFG = [
+  ['Map / Stadium card · Mobile', 3, 'Stadium', '8 stadiums in view', 'Berlin and surroundings', [[60, 70], [320, 90], [120, 200], [330, 330], [50, 360], [260, 560], [100, 600]], [[330, 470, 2]]],
+  ['Map / Events · Mobile', 4, 'Event', '16 events in view', 'Berlin and surroundings', [[60, 60], [310, 60], [150, 130], [50, 230], [335, 240], [60, 330], [345, 350], [120, 570], [290, 575], [60, 610]], [[200, 590, 3], [330, 480, 2]]],
+  ['Map / Match requests · Mobile', 5, 'Match request', '6 requests in view', 'Berlin and surroundings', [[60, 70], [315, 70], [140, 140], [335, 250], [55, 330], [130, 570], [290, 575]], [[220, 600, 2]]],
+  ['Map / Scouts near you · Mobile', 6, 'Scout', '7 scouts within 50 km', 'Managers and officials who shortlist players', [[120, 170], [270, 190], [90, 330], [300, 350], [200, 150], [150, 560]], []]
+];
+for (const [name, i, kind, total, brk, pts, cls] of CFG) {
+  await step(name, async () => {
+    const { f, area } = await buildScreen(name, i, 'city');
+    if (kind === 'Scout') {
+      const c = figma.createEllipse(); c.name = 'Radius'; c.resize(300, 300); c.fills = [P(V('color/map/scout'))]; c.opacity = 0.1; area.appendChild(c); c.x = 45; c.y = 190;
+      const ring = figma.createEllipse(); ring.name = 'Radius edge'; ring.resize(300, 300); ring.fills = []; ring.strokes = [P(V('color/map/scout'))]; ring.strokeWeight = 1.5; ring.dashPattern = [6, 4]; area.appendChild(ring); ring.x = 45; ring.y = 190;
+      const dot = figma.createEllipse(); dot.name = 'You are here'; dot.resize(12, 12); dot.fills = [P(V('color/bg/brand'))]; dot.strokes = [P(V('color/bg/surface'))]; dot.strokeWeight = 2; area.appendChild(dot); dot.x = 189; dot.y = 334;
+    }
+    for (const [x, y] of pts) marker(area, x, y, 'Default', kind);
+    for (const [x, y, n] of cls) await cluster(area, x, y, n);
+    const mk = kind === 'Scout' ? [195, 255] : [195, 215]; marker(area, mk[0], mk[1], 'Selected', kind);
+    const card = cardSet.children.find(c => c.name === 'Kind=' + kind).createInstance(); card.name = 'Map card · ' + kind; f.appendChild(card); card.x = Math.round((W - card.width) / 2); card.y = TOP + (kind === 'Scout' ? 290 : 255);
+    const s = await addSheet(f, 'Handle', total, brk); addControls(f, s.y); await addHeader(f);
+    report.info[kind] = 'card ' + Math.round(card.x) + ',' + Math.round(card.y) + ' ' + Math.round(card.width) + 'x' + Math.round(card.height);
+  });
+}
 await figma.setCurrentPageAsync(p02);
-// fit mobile Map section and self-check
 let r = 0, b = 0; for (const ch of mm.children) { r = Math.max(r, ch.x + ch.width); b = Math.max(b, ch.y + ch.height); }
 mm.resizeWithoutConstraints(Math.max(1800, Math.ceil(r + 80)), Math.max(1400, Math.ceil(b + 80)));
 const scr = mm.children.filter(n => /Mobile$/.test(n.name));
-report.info.screens = scr.map(n => n.name + ' ' + Math.round(n.width) + 'x' + Math.round(n.height) + ' @' + Math.round(n.x) + ',' + Math.round(n.y) + ' kids ' + n.children.length).join(' | ');
+report.info.screens = scr.map(n => n.name + ' @' + Math.round(n.x) + ',' + Math.round(n.y) + ' kids ' + n.children.length).join(' | ');
 report.info.section = Math.round(mm.width) + 'x' + Math.round(mm.height);
 report.info.grayFills = scr.flatMap(s => s.findAll(n => 'fills' in n && Array.isArray(n.fills) && n.fills.some(f => f.type === 'SOLID' && Math.round(f.color.r * 255) === 128 && Math.round(f.color.g * 255) === 128 && Math.round(f.color.b * 255) === 128 && !(n.boundVariables && n.boundVariables.fills))).map(n => n.name));
 report.info.unstyledText = scr.reduce((a, s) => a + s.findAll(n => n.type === 'TEXT' && !n.textStyleId && !n.getRangeTextStyleId(0, 1)).length, 0);
