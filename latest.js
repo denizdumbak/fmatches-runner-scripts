@@ -21,15 +21,18 @@ async function setText(node, str) { const f = node.fontName === figma.mixed ? no
 const set01 = nm => p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === nm);
 const sec7 = p01.children.find(n => n.type === 'SECTION' && /^7 /.test(n.name));
 if (!sec7) throw new Error('01 > 7 Map section missing');
-const rowSet = set01('Map result row'), swSet = set01('Map type switcher');
-if (!rowSet || !swSet) throw new Error('Map result row or Map type switcher set missing');
+const findSet = re => sec7.findOne(n => (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') && re.test(n.name)) || p01.findOne(n => (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') && re.test(n.name));
+const rowSet = findSet(/result row/i), swSet = findSet(/type switcher/i);
+if (!rowSet || !swSet) throw new Error('set missing (row=' + !!rowSet + ', switcher=' + !!swSet + '). In 7 · Map: ' + sec7.findAll(n => n.type === 'COMPONENT_SET' || (n.type === 'COMPONENT' && n.parent === sec7)).map(n => n.name).join(' | '));
+const kidsOf = st => st.type === 'COMPONENT_SET' ? st.children : [st];
+report.info.found = rowSet.type + ':' + rowSet.name + ' / ' + swSet.type + ':' + swSet.name;
 const SEARCH_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
 function mkIcon(svg, colorVar, size) {
   const ic = figma.createNodeFromSvg(svg); ic.name = 'Icon'; ic.fills = []; ic.resize(size, size); ic.constraints = { horizontal: 'SCALE', vertical: 'SCALE' };
   const walk = x => { if ('children' in x) x.children.forEach(walk); if (x.type !== 'FRAME' && x.type !== 'GROUP') { if (x.strokes && x.strokes.length) x.strokes = [P(colorVar)]; x.constraints = { horizontal: 'SCALE', vertical: 'SCALE' }; } };
   walk(ic); return ic;
 }
-const rowDef = rowSet.children[0];
+const rowDef = kidsOf(rowSet)[0];
 const ROWS = [['Spreeufer FC', 'Regional League · Tier 3 · Mitte'], ['Nordpark SC', 'Fifth Division · Tier 5 · Wedding'], ['Havelblick United', 'Fourth Division · Tier 4 · Spandau']];
 
 async function buildSheet(kind) {
@@ -51,7 +54,7 @@ async function buildSheet(kind) {
     f.appendChild(mkIcon(SEARCH_SVG, V('color/icon/default'), 20));
     const ph = await txt('Search city, club or facility', S_BODY, V('color/text/secondary')); ph.name = 'Placeholder'; f.appendChild(ph);
     c.appendChild(f); f.layoutAlign = 'STRETCH';
-    const sw = swSet.children.find(v => v.name === 'Active=Clubs') || swSet.children[0]; const si = sw.createInstance(); si.name = 'Type switcher'; c.appendChild(si); si.layoutAlign = 'STRETCH';
+    const sw = kidsOf(swSet).find(v => v.name === 'Active=Clubs') || kidsOf(swSet)[0]; const si = sw.createInstance(); si.name = 'Type switcher'; c.appendChild(si); si.layoutAlign = 'STRETCH';
   }
   // summary
   const sum = figma.createFrame(); sum.name = 'Summary'; sum.layoutMode = 'HORIZONTAL'; sum.counterAxisAlignItems = 'CENTER'; sum.primaryAxisAlignItems = 'SPACE_BETWEEN'; sum.primaryAxisSizingMode = 'FIXED'; sum.counterAxisSizingMode = 'AUTO'; sum.resize(358, 40); sum.counterAxisSizingMode = 'AUTO'; sum.fills = [];
