@@ -1,81 +1,59 @@
-// step 230 · Prototype for the map: desktop + mobile ideal flows (NAVIGATE only, hover reactions kept), Home nav -> Interactive map, flow starts
+// step 231 · Bottom sheet: Filters pill in Summary (all variants) + wire Filters -> Map / Filters · Mobile; flow starts written without duplicate node ids
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
-const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync(); await figma.setCurrentPageAsync(p02);
-const nav = dest => ({ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'NODE', destinationId: dest.id, navigation: 'NAVIGATE', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.3 }, preserveScrollPosition: false, resetVideoPosition: false }] });
+const p01 = figma.root.children.find(p => /^01/.test(p.name)); const p02 = figma.root.children.find(p => /^02/.test(p.name));
+await p01.loadAsync(); await p02.loadAsync(); await figma.setCurrentPageAsync(p01);
+const allVars = await figma.variables.getLocalVariablesAsync();
+const V = name => { const v = allVars.find(x => x.name === name); if (!v) throw new Error('variable missing: ' + name); return v; };
+const tryV = (...names) => { for (const n of names) { const v = allVars.find(x => x.name === n); if (v) return v; } throw new Error('none of: ' + names.join(', ')); };
+const P = v => figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: .5, g: .5, b: .5 } }, 'color', v);
+const texts = await figma.getLocalTextStylesAsync(); const S_LABEL = texts.find(t => t.name === 'Label/Default') || texts.find(t => t.name.indexOf('Label/Default') === 0);
+await figma.loadFontAsync(S_LABEL.fontName);
+const SLIDERS = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>';
+const sheetSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Bottom sheet');
+await step('Filters pill in Bottom sheet variants', async () => {
+  if (!sheetSet) throw new Error('Bottom sheet set missing'); let done = 0;
+  for (const v of sheetSet.children) {
+    const sum = v.findOne(n => n.type === 'FRAME' && n.name === 'Summary'); if (!sum) { report.errors.push('no Summary in ' + v.name); continue; }
+    if (sum.findOne(n => n.name === 'Filters')) continue;
+    const clr = sum.findOne(n => n.type === 'TEXT' && n.name === 'Clear all'); if (!clr) { report.errors.push('no Clear all in ' + v.name); continue; }
+    const act = figma.createFrame(); act.name = 'Actions'; act.layoutMode = 'HORIZONTAL'; act.primaryAxisSizingMode = 'AUTO'; act.counterAxisSizingMode = 'AUTO'; act.counterAxisAlignItems = 'CENTER'; act.itemSpacing = 12; act.fills = [];
+    const pill = figma.createFrame(); pill.name = 'Filters'; pill.layoutMode = 'HORIZONTAL'; pill.primaryAxisSizingMode = 'AUTO'; pill.counterAxisSizingMode = 'AUTO'; pill.counterAxisAlignItems = 'CENTER'; pill.itemSpacing = 6;
+    pill.paddingLeft = 12; pill.paddingRight = 12; pill.paddingTop = 6; pill.paddingBottom = 6; pill.fills = []; pill.strokes = [P(V('color/border/default'))]; pill.strokeWeight = 1;
+    for (const k of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) pill.setBoundVariable(k, V('radius/full'));
+    const ic = figma.createNodeFromSvg(SLIDERS); ic.name = 'Icon'; ic.fills = []; ic.resize(16, 16); const walk = x => { if ('children' in x) x.children.forEach(walk); if (x.type !== 'FRAME' && x.type !== 'GROUP' && x.strokes && x.strokes.length) x.strokes = [P(V('color/icon/default'))]; }; walk(ic); pill.appendChild(ic);
+    const t = figma.createText(); await t.setTextStyleIdAsync(S_LABEL.id); t.characters = 'Filters'; t.name = 'Label'; t.fills = [P(V('color/text/primary'))]; pill.appendChild(t);
+    act.appendChild(pill); sum.insertChild(sum.children.indexOf(clr), act); act.appendChild(clr); done++;
+  }
+  report.info.pillsAdded = done;
+});
+await figma.setCurrentPageAsync(p02);
 const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web'); const mob = p02.children.find(n => n.type === 'SECTION' && /^Mobile/.test(n.name));
-const dMap = web.children.find(n => n.type === 'SECTION' && n.name === 'Map'); const mMap = mob.children.find(n => n.type === 'SECTION' && n.name === 'Map');
-const D = {}, M = {};
-for (const n of dMap.children) if (/ · Desktop$/.test(n.name)) D[n.name.replace(' · Desktop', '')] = n;
-for (const n of mMap.children) if (/ · Mobile$/.test(n.name)) M[n.name.replace(' · Mobile', '')] = n;
-report.info.desktopScreens = Object.keys(D).length; report.info.mobileScreens = Object.keys(M).length;
-const LINKS = [];
+const mMap = mob.children.find(n => n.type === 'SECTION' && n.name === 'Map'); const dMap = web.children.find(n => n.type === 'SECTION' && n.name === 'Map');
+const M = {}; for (const n of mMap.children) if (/ · Mobile$/.test(n.name)) M[n.name.replace('Map / ', '').replace(' · Mobile', '')] = n;
+const D = {}; for (const n of dMap.children) if (/ · Desktop$/.test(n.name)) D[n.name.replace('Map / ', '').replace(' · Desktop', '')] = n;
+const nav = dest => ({ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'NODE', destinationId: dest.id, navigation: 'NAVIGATE', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.3 }, preserveScrollPosition: false, resetVideoPosition: false }] });
 const isNavAct = a => a && a.type === 'NODE' && a.navigation !== 'CHANGE_TO';
-async function clearNav(pg) { let c = 0; for (const n of [pg].concat(pg.findAll(x => x.reactions && x.reactions.length))) { const keep = n.reactions.filter(rx => !(rx.actions || []).some(isNavAct)); if (keep.length !== n.reactions.length) { try { await n.setReactionsAsync(keep); c++; } catch (e) { report.errors.push('clear ' + n.name + ': ' + e.message); } } } return c; }
-const findText = (root, str) => root.findOne(n => n.type === 'TEXT' && n.characters === str);
-function tapTarget(t, stop) { let n = t; const p = n.parent; if (p && p !== stop && p.type !== 'SECTION' && !/ · (Desktop|Mobile)$/.test(p.name) && p.children && p.children.length <= 3) n = p; return n; }
-async function link(label, el, dest) { if (!el) { report.errors.push('missing element: ' + label); return; } if (!dest) { report.errors.push('missing destination: ' + label); return; } try { await el.setReactionsAsync((el.reactions || []).filter(rx => !(rx.actions || []).some(isNavAct)).concat([nav(dest)])); LINKS.push(label + ' -> ' + dest.name); } catch (e) { report.errors.push('link ' + label + ': ' + e.message); } }
-async function segLinks(pg, pgName, dests) { const sw = pg.findOne(n => n.name === 'Type switcher'); if (!sw) { report.errors.push('no Type switcher on ' + pgName); return; } for (const [lab, dn] of dests) { if (dn === pgName) continue; const t = findText(sw, lab); await link(pgName + ' · switcher ' + lab, t && tapTarget(t, sw), SEGDEST[dn]); } }
-
-// 1. clear old page navigation on map screens
-await step('clear map navigation', async () => { let c = 0; for (const pg of Object.values(D).concat(Object.values(M))) c += await clearNav(pg); report.info.cleared = c; });
-
-// 2. desktop
-const SEGDEST = { Default: D['Map / Default'], 'Stadium card': D['Map / Stadium card'], Events: D['Map / Events'], 'Match requests': D['Map / Match requests'] };
-await step('desktop flow', async () => {
-  const G = {}; for (const k of Object.keys(D)) G[k.replace('Map / ', '')] = D[k];
-  const SEGD = { Clubs: 'Default', Stadiums: 'Stadium card', Events: 'Events', Requests: 'Match requests' };
-  const dd = {}; for (const k of Object.keys(SEGD)) dd[k] = SEGD[k];
-  for (const k of ['Default', 'Club card', 'Events', 'Match requests', 'Stadium card']) { SEGDEST[k] = G[k]; }
-  SEGDEST['Club card'] = G['Club card'];
-  // segment destinations: Clubs -> Club card is NOT used, Clubs -> Default
-  for (const pgName of ['Default', 'Club card', 'Events', 'Match requests', 'Stadium card']) {
-    const pg = G[pgName]; if (!pg) { report.errors.push('desktop page missing: ' + pgName); continue; }
-    const sw = pg.findOne(n => n.name === 'Type switcher'); if (!sw) { report.errors.push('no Type switcher on ' + pgName); continue; }
-    for (const [lab, dn] of Object.entries(SEGD)) { if (dn === pgName || (pgName === 'Club card' && dn === 'Default')) continue; const t = findText(sw, lab); await link('Desktop ' + pgName + ' · ' + lab, t && tapTarget(t, sw), G[dn]); }
+await step('wire Filters pills', async () => {
+  let c = 0; const miss = [];
+  for (const k of ['Default', 'Club card', 'Stadium card', 'Events', 'Match requests', 'List']) {
+    const sheet = M[k] && M[k].findOne(n => n.type === 'INSTANCE' && /^Bottom sheet/.test(n.name)); const pill = sheet && sheet.findOne(n => n.name === 'Filters' && n.type === 'FRAME');
+    if (!pill) { miss.push(k); continue; }
+    await pill.setReactionsAsync((pill.reactions || []).filter(rx => !(rx.actions || []).some(isNavAct)).concat([nav(M['Filters'])])); c++;
   }
-  // Default: biggest cluster -> Club card
-  const cl = G['Default'].findOne(n => n.type === 'INSTANCE' && n.name === 'Cluster · 439') || G['Default'].findOne(n => n.type === 'INSTANCE' && /^Cluster/.test(n.name)); await link('Desktop Default · cluster', cl, G['Club card']);
-  // Club card: View stadium -> Stadium card
-  const cc = G['Club card'].findOne(n => n.type === 'INSTANCE' && /^Map card/.test(n.name)); const vs = cc && findText(cc, 'View stadium'); await link('Desktop Club card · View stadium', vs && tapTarget(vs, cc), G['Stadium card']);
-  // Stadium card: View club -> Club card
-  const sc = G['Stadium card'].findOne(n => n.type === 'INSTANCE' && /^Map card/.test(n.name)); const vc = sc && findText(sc, 'View club'); await link('Desktop Stadium card · View club', vc && tapTarget(vc, sc), G['Club card']);
-  // Scouts: ask -> results
-  const sh = G['Scouts near you · ask'].findOne(n => /Show scouts/.test(n.name) && n.type !== 'TEXT'); await link('Desktop Scouts ask · Show scouts', sh, G['Scouts near you']);
-  // Home nav -> Interactive map
-  for (const hn of ['Home / Main · Desktop', 'Home / Main / Slide 2 · Desktop', 'Home / Main / Slide 3 · Desktop', 'Home / Main / Calendar view · Desktop']) {
-    const hp = web.findOne(n => n.type === 'FRAME' && n.name === hn); if (!hp) { report.errors.push('home missing: ' + hn); continue; }
-    const nv = hp.children.find(c => c.name === 'Navigation'); const t = nv && findText(nv, 'Interactive map'); await link(hn + ' · nav Interactive map', t, G['Default']);
-  }
+  report.info.filtersWired = c; if (miss.length) report.errors.push('Filters pill not found on: ' + miss.join(', '));
 });
-
-// 3. mobile
-await step('mobile flow', async () => {
-  const G = {}; for (const k of Object.keys(M)) G[k.replace('Map / ', '')] = M[k];
-  const need = ['Default', 'Club card', 'List', 'Stadium card', 'Events', 'Match requests', 'Scouts near you', 'Filters']; for (const k of need) if (!G[k]) throw new Error('mobile page missing: ' + k);
-  const cl = G['Default'].findOne(n => n.type === 'INSTANCE' && n.name === 'Cluster · 439') || G['Default'].findOne(n => n.type === 'INSTANCE' && /^Cluster/.test(n.name)); await link('Mobile Default · cluster', cl, G['Club card']);
-  const cc = G['Club card'].findOne(n => n.type === 'INSTANCE' && /^Map card/.test(n.name)); const vs = cc && findText(cc, 'View stadium'); await link('Mobile Club card · View stadium', vs && tapTarget(vs, cc), G['Stadium card']);
-  const sc = G['Stadium card'].findOne(n => n.type === 'INSTANCE' && /^Map card/.test(n.name)); const vc = sc && findText(sc, 'View club'); await link('Mobile Stadium card · View club', vc && tapTarget(vc, sc), G['Club card']);
-  for (const k of ['Default', 'Club card', 'Stadium card', 'Events', 'Match requests']) { const sheet = G[k].findOne(n => n.type === 'INSTANCE' && /^Bottom sheet/.test(n.name)); await link('Mobile ' + k + ' · sheet', sheet, G['List']); }
-  const sw = G['List'].findOne(n => n.name === 'Type switcher'); const MS = { Clubs: 'Club card', Stadiums: 'Stadium card', Events: 'Events', Requests: 'Match requests' };
-  for (const [lab, dn] of Object.entries(MS)) { const t = sw && findText(sw, lab); await link('Mobile List · switcher ' + lab, t && tapTarget(t, sw), G[dn]); }
-  const cx = G['Filters'].findOne(n => n.name === 'Close'); await link('Mobile Filters · Close', cx, G['List']);
-  const sb = G['Filters'].findOne(n => n.type === 'INSTANCE' && /^Button · Show/.test(n.name)); await link('Mobile Filters · Show clubs', sb, G['List']);
-});
-
-// 4. flow starting points
 await step('flow starts', async () => {
   const names = ['Web · Interactive map', 'Web · Scouts near you', 'Mobile · Interactive map', 'Mobile · Scouts near you'];
-  const keep = []; for (const s of (p02.flowStartingPoints || [])) { if (names.indexOf(s.name) >= 0) continue; keep.push({ nodeId: s.nodeId, name: s.name }); }
-  keep.push({ nodeId: D['Map / Default'].id, name: names[0] }, { nodeId: D['Map / Scouts near you · ask'].id, name: names[1] }, { nodeId: M['Map / Default'].id, name: names[2] }, { nodeId: M['Map / Scouts near you'].id, name: names[3] });
+  const add = [[D['Default'], names[0]], [D['Scouts near you · ask'], names[1]], [M['Default'], names[2]], [M['Scouts near you'], names[3]]];
+  const keep = [], seen = new Set();
+  for (const s of (p02.flowStartingPoints || [])) { if (names.indexOf(s.name) >= 0 || seen.has(s.nodeId)) continue; seen.add(s.nodeId); keep.push({ nodeId: s.nodeId, name: s.name }); }
+  for (const [n, nm] of add) { if (!n) { report.errors.push('flow start screen missing: ' + nm); continue; } if (seen.has(n.id)) { report.errors.push('flow start node already used: ' + nm); continue; } seen.add(n.id); keep.push({ nodeId: n.id, name: nm }); }
   p02.flowStartingPoints = keep; report.info.flowStarts = keep.length;
+  report.info.flowStartList = keep.map(k => k.name).join(' | ');
 });
-
-// 5. self-check: all NAVIGATE destinations of the map screens resolve to screens
-const screensById = {}; for (const pg of Object.values(D).concat(Object.values(M))) screensById[pg.id] = pg;
-let broken = 0, total = 0; const per = [];
-for (const pg of Object.values(D).concat(Object.values(M))) { let c = 0; for (const n of [pg].concat(pg.findAll(x => x.reactions && x.reactions.length))) for (const rx of n.reactions) for (const a of (rx.actions || [])) if (isNavAct(a)) { c++; total++; if (!screensById[a.destinationId]) { const dn = await figma.getNodeByIdAsync(a.destinationId); if (!dn) broken++; } } per.push(pg.name.replace('Map / ', '') + ':' + c); }
-report.info.links = LINKS.length; report.info.navTotal = total; report.info.broken = broken; report.info.perScreen = per.join(' | ');
-report.info.linkList = LINKS;
+// overflow check: Summary content fits 358 on every mobile map screen
+const over = []; for (const k of Object.keys(M)) for (const s of M[k].findAll(n => n.type === 'FRAME' && n.name === 'Summary')) { const kids = s.children; const w = kids.reduce((a, c) => a + c.width, 0); if (w > s.width) over.push(k + ': ' + Math.round(w) + '>' + Math.round(s.width)); }
+report.info.summaryOverflow = over.length ? over : 'none';
 return report;
