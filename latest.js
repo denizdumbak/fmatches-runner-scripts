@@ -1,23 +1,16 @@
-// step 232 · rename auto flow "Flow 1" to "Mobile · Interactive map"; hide Filters pill on Scouts near you (mobile) so the summary row fits
+// step 233 · READ-ONLY inspect: mobile Navigation structure, menu icon, desktop nav items, Home mobile screens, existing menu components
 
-const report = { done: [], errors: [], info: {} };
-async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
-const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync(); await figma.setCurrentPageAsync(p02);
-const mob = p02.children.find(n => n.type === 'SECTION' && /^Mobile/.test(n.name)); const mMap = mob.children.find(n => n.type === 'SECTION' && n.name === 'Map');
-const MD = mMap.children.find(n => n.name === 'Map / Default · Mobile'), MS = mMap.children.find(n => n.name === 'Map / Scouts near you · Mobile');
-await step('rename flow start', async () => {
-  const fs = (p02.flowStartingPoints || []).map(f => ({ nodeId: f.nodeId, name: f.name }));
-  const hit = fs.find(f => f.nodeId === MD.id); if (!hit) throw new Error('no flow start on Map / Default · Mobile');
-  report.info.renamedFrom = hit.name; hit.name = 'Mobile · Interactive map';
-  const seen = new Set(); const clean = []; for (const f of fs) { if (seen.has(f.nodeId)) continue; seen.add(f.nodeId); clean.push(f); }
-  p02.flowStartingPoints = clean; report.info.flowStarts = clean.length; report.info.names = clean.map(f => f.name).join(' | ');
-});
-await step('hide Filters pill on Scouts', async () => {
-  const sheet = MS.findOne(n => n.type === 'INSTANCE' && /^Bottom sheet/.test(n.name)); const pill = sheet && sheet.findOne(n => n.name === 'Filters' && n.type === 'FRAME');
-  if (!pill) throw new Error('pill not found'); pill.visible = false;
-  const sum = sheet.findOne(n => n.name === 'Summary'); const w = sum.children.filter(c => c.visible).reduce((a, c) => a + c.width, 0);
-  report.info.scoutSummary = Math.round(w) + ' of ' + Math.round(sum.width);
-});
-const over = []; for (const pg of mMap.children.filter(n => / · Mobile$/.test(n.name))) for (const s of pg.findAll(n => n.type === 'FRAME' && n.name === 'Summary')) { const w = s.children.filter(c => c.visible).reduce((a, c) => a + c.width, 0); if (w > s.width) over.push(pg.name + ': ' + Math.round(w) + '>' + Math.round(s.width)); }
-report.info.summaryOverflow = over.length ? over : 'none';
-return report;
+const p01 = figma.root.children.find(p => /^01/.test(p.name)); const p02 = figma.root.children.find(p => /^02/.test(p.name));
+await p01.loadAsync(); await p02.loadAsync();
+const out = {}; const r = n => Math.round(n);
+const mob = p02.children.find(n => n.type === 'SECTION' && /^Mobile/.test(n.name)); const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web');
+const tree = (n, d, max) => { let s = '  '.repeat(d) + n.type + ' "' + n.name + '" ' + r(n.width) + 'x' + r(n.height) + (n.type === 'TEXT' ? ' "' + n.characters.slice(0, 30) + '"' : '') + (n.visible === false ? ' [hidden]' : '') + '\n'; if ('children' in n && d < max) for (const c of n.children) s += tree(c, d + 1, max); return s; };
+const hm = mob.findOne(n => n.type === 'FRAME' && n.name === 'Home / Main · Mobile'); 
+if (hm) { const nv = hm.children.find(c => c.name === 'Navigation'); out.mobileNavTree = nv ? tree(nv, 0, 4) : 'no Navigation'; if (nv) { const mc = await nv.getMainComponentAsync(); out.mobileNavMain = mc ? mc.name + ' in ' + (mc.parent ? mc.parent.name : '?') : '?'; } out.homeTop = hm.children.slice(0, 4).map(c => c.name + ' ' + r(c.width) + 'x' + r(c.height)).join(' | '); }
+const dh = web.findOne(n => n.type === 'FRAME' && n.name === 'Home / Main · Desktop'); const dn = dh && dh.children.find(c => c.name === 'Navigation'); out.desktopNavTree = dn ? tree(dn, 0, 3) : 'none';
+out.mobileHomeScreens = mob.findAll(n => n.type === 'FRAME' && /^Home/.test(n.name) && n.width === 390).map(n => n.name + ' ' + r(n.width) + 'x' + r(n.height));
+out.menuLike = p01.findAll(n => (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') && /menu|hamburger|drawer|nav/i.test(n.name)).map(n => n.type + ' ' + n.name + ' ' + r(n.width) + 'x' + r(n.height) + ' in ' + (n.parent ? n.parent.name : '?'));
+out.menuScreens = mob.findAll(n => n.type === 'FRAME' && n.width === 390 && /menu/i.test(n.name)).map(n => n.name);
+const hdr = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Header'); if (hdr) out.headerVariants = hdr.children.map(v => v.name + ' ' + r(v.width) + 'x' + r(v.height));
+const mv = hdr && hdr.children.find(v => /Device=Mobile/.test(v.name)); if (mv) out.headerMobileTree = tree(mv, 0, 4);
+return out;
