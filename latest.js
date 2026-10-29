@@ -115,7 +115,9 @@ await step('Confirm dialog', async () => {
       const copy = c.findOne(n => n.name === 'Copy'); const ts = copy.children.filter(n => n.type === 'TEXT');
       await setText(ts[0], title); await setText(ts[1], body); ts[0].name = 'Title'; ts[1].name = 'Body';
       ts[1].textAutoResize = 'HEIGHT'; copy.primaryAxisSizingMode = 'AUTO'; c.primaryAxisSizingMode = 'AUTO';
-      const btns = c.findAll(n => n.type === 'INSTANCE' && /^Button · /.test(n.name)); const okBtn = btns[btns.length - 1];
+      const btns = c.findAll(n => n.type === 'INSTANCE' && /^Button/.test(n.name));
+      const okBtn = btns.find(b => { const t = b.findOne(n => n.type === 'TEXT'); return t && t.characters === 'Log out'; });
+      if (!okBtn) throw new Error('Log out button not found in ' + c.name + ' (buttons: ' + btns.map(b => b.name).join(', ') + ')');
       const lt = okBtn.findOne(n => n.type === 'TEXT'); await setText(lt, ok); okBtn.name = 'Button · ' + ok;
       comps.push(c);
     }
@@ -125,6 +127,7 @@ await step('Confirm dialog', async () => {
   for (const ch of set.children) { ch.x += 32; ch.y += 32; }
   set.resizeWithoutConstraints(set.width + 64, set.height + 64);
   report.info.confirmDialog = set.children.map(v => v.name + ' ' + Math.round(v.width) + 'x' + Math.round(v.height)).join(' | ');
+  report.info.confirmButtons = set.children.map(v => v.name + ': ' + v.findAll(n => n.type === 'INSTANCE' && /^Button/.test(n.name)).map(b => b.name + ' [' + (b.findOne(n => n.type === 'TEXT') || {}).characters + ']').join(' , ')).join(' | ');
   const sample = set.children.find(v => /Block person, Device=Desktop/.test(v.name));
   report.info.confirmBlockTree = (function dd(n, d, out) { out.push('  '.repeat(d) + n.type + ' "' + n.name + '" ' + Math.round(n.width) + 'x' + Math.round(n.height) + (n.type === 'TEXT' ? ' "' + n.characters.slice(0, 40) + '"' : '')); if (d < 2 && 'children' in n) for (const k of n.children) dd(k, d + 1, out); return out; })(sample, 0, []);
 });
