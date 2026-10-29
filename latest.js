@@ -1,4 +1,4 @@
-// step 240 · Messenger / Default · Desktop (02 › Web › Messenger): Ticker + Navigation, chat list panel (7 chats, Tom selected) + thread (header, messages, composer)
+// step 241 · Messenger components 4 (Thread empty state, Person row) + pages: No chats, No chat selected, New message (desktop, derived from Default)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -47,9 +47,8 @@ const oldRight = sec8.x + sec8.width;
 
 const IMG = f => 'https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/gallery/' + f;
 
-const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
-const btnSet = findSet(/^Button$/), chatSet = findSet(/^Chat list item$/), bubSet = findSet(/^Message bubble$/), divComp = findSet(/^Date divider$/), thSet = findSet(/^Thread header$/), compSet = findSet(/^Composer$/);
-for (const [n, v] of [['Button', btnSet], ['Chat list item', chatSet], ['Message bubble', bubSet], ['Date divider', divComp], ['Thread header', thSet], ['Composer', compSet]]) if (!v) throw new Error('component missing: ' + n);
+const btnSet = findSet(/^Button$/);
+if (!btnSet) throw new Error('Button set not found');
 async function setText(node, str) { for (const seg of node.getStyledTextSegments(['fontName'])) await figma.loadFontAsync(seg.fontName); node.characters = str; }
 const setIn = async (root, nm, str) => { const t = root.findOne(n => n.type === 'TEXT' && n.name === nm); if (!t) throw new Error('text "' + nm + '" not found in ' + root.name); await setText(t, str); };
 async function mkBtn(label, style) {
@@ -59,95 +58,163 @@ async function mkBtn(label, style) {
   if (lk) b.setProperties({ [lk]: label }); if (ik) b.setProperties({ [ik]: false });
   const bt = b.findOne(n => n.type === 'TEXT'); if (bt) await setText(bt, label); return b;
 }
+const MSG_SVG = SV('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>');
+const photo40 = () => {
+  const photo = frame('Photo'); photo.resize(40, 40); photo.clipsContent = true; RAD(photo, 'radius/full');
+  const sv = silSet.children.find(v => v.name === 'Role=Other, Gender=Male, Size=40') || silSet.children[0];
+  const i0 = sv.createInstance(); i0.name = 'Silhouette'; photo.appendChild(i0); i0.x = 0; i0.y = 0; return photo;
+};
+for (const n of sec8.children.slice()) { if (['Thread empty state', 'Person row'].indexOf(n.name) >= 0) n.remove(); }
+
+// ---------- Thread empty state ----------
+await step('Thread empty state', async () => {
+  const kinds = [['Not selected', 'Select a conversation', 'Choose a chat from the list or start a new message.'], ['No chats', 'Start your first conversation', 'Find a player, club or scout in the database and send your first message.']];
+  const comps = [];
+  for (const [k, t, b] of kinds) {
+    const c = figma.createComponent(); c.name = 'Kind=' + k; sec8.appendChild(c);
+    c.resize(400, 200); c.layoutMode = 'VERTICAL'; c.primaryAxisSizingMode = 'AUTO'; c.counterAxisSizingMode = 'FIXED'; c.counterAxisAlignItems = 'CENTER'; GAP(c, 'spacing/md'); c.fills = [];
+    const circ = frame('Icon circle'); circ.resize(48, 48); circ.layoutMode = 'HORIZONTAL'; circ.primaryAxisSizingMode = 'FIXED'; circ.counterAxisSizingMode = 'FIXED'; circ.primaryAxisAlignItems = 'CENTER'; circ.counterAxisAlignItems = 'CENTER'; fillV(circ, 'color/bg/subtle'); RAD(circ, 'radius/full');
+    const ic = mkIcon(MSG_SVG, 'color/icon/default', 24); ic.name = 'Icon'; circ.appendChild(ic); c.appendChild(circ);
+    const tt = await txt('Title', t, 'Heading/H4', 'color/text/primary'); c.appendChild(tt); tt.layoutSizingHorizontal = 'FILL'; tt.textAutoResize = 'HEIGHT'; tt.textAlignHorizontal = 'CENTER';
+    const bd = await txt('Body', b, 'Body/Default', 'color/text/secondary'); c.appendChild(bd); bd.layoutSizingHorizontal = 'FILL'; bd.textAutoResize = 'HEIGHT'; bd.textAlignHorizontal = 'CENTER';
+    c.appendChild(await mkBtn('New message', 'Primary'));
+    comps.push(c);
+  }
+  comps[0].x = 32; comps[0].y = 32; comps[1].x = 32 + 440; comps[1].y = 32;
+  const set = figma.combineAsVariants(comps, sec8); set.name = 'Thread empty state';
+  for (const ch of set.children) { ch.x += 32; ch.y += 32; }
+  set.resizeWithoutConstraints(set.width + 64, set.height + 64);
+  report.info.threadEmpty = set.children.map(v => v.name + ' ' + Math.round(v.width) + 'x' + Math.round(v.height)).join(' | ');
+});
+
+// ---------- Person row ----------
+await step('Person row', async () => {
+  const comps = [];
+  for (const st of ['Default', 'Hover']) {
+    const c = figma.createComponent(); c.name = 'State=' + st; sec8.appendChild(c);
+    c.resize(1040, 72); c.layoutMode = 'HORIZONTAL'; c.primaryAxisSizingMode = 'FIXED'; c.counterAxisSizingMode = 'AUTO'; c.counterAxisAlignItems = 'CENTER';
+    PAD(c, 'spacing/md', 'spacing/lg', 'spacing/md', 'spacing/lg'); GAP(c, 'spacing/md'); fillV(c, st === 'Default' ? 'color/bg/surface' : 'color/bg/subtle');
+    c.strokes = [P(V('color/border/default'))]; c.strokeAlign = 'INSIDE'; c.strokeTopWeight = 0; c.strokeLeftWeight = 0; c.strokeRightWeight = 0; c.strokeBottomWeight = 1;
+    c.appendChild(photo40());
+    const col = frame('Text', 'VERTICAL'); c.appendChild(col); col.layoutGrow = 1; col.layoutAlign = 'STRETCH';
+    col.appendChild(await txt('Name', 'Tom Reilly', 'Label/Default Strong', 'color/text/primary'));
+    const mt = await txt('Meta', 'Manager · Riverside FC', 'Label/Small', 'color/text/secondary'); col.appendChild(mt); mt.layoutSizingHorizontal = 'FILL'; mt.textAutoResize = 'HEIGHT'; mt.textTruncation = 'ENDING'; mt.maxLines = 1;
+    comps.push(c);
+  }
+  comps[0].x = 32; comps[0].y = 32; comps[1].x = 32; comps[1].y = 32 + Math.ceil(comps[0].height) + 40;
+  const set = figma.combineAsVariants(comps, sec8); set.name = 'Person row';
+  for (const ch of set.children) { ch.x += 32; ch.y += 32; }
+  set.resizeWithoutConstraints(set.width + 64, set.height + 64);
+  report.info.personRow = set.children.map(v => v.name + ' ' + Math.round(v.width) + 'x' + Math.round(v.height)).join(' | ');
+});
+
+// ---------- section layout ----------
+await step('relayout section 8', async () => {
+  const s = sec8;
+  const kids = s.children.slice();
+  const left = s.x + 80; let y = s.y + 80, first = true;
+  for (const k of kids) { const b = k.absoluteBoundingBox; if (!b) continue; if (!first) y += 120; k.x += left - b.x; k.y += y - b.y; y += b.height; first = false; }
+  let right = -Infinity, bottom = -Infinity;
+  for (const k of s.children) { const b = k.absoluteBoundingBox; if (!b) continue; if (b.x + b.width > right) right = b.x + b.width; if (b.y + b.height > bottom) bottom = b.y + b.height; }
+  s.resizeWithoutConstraints(Math.ceil(right - s.x + 80), Math.ceil(bottom - s.y + 80));
+  const delta = Math.round(s.x + s.width - oldRight);
+  const moved = [];
+  if (delta !== 0) for (const o of p01.children) { if (o.type === 'SECTION' && o !== s && o.x > s.x) { o.x += delta; moved.push(o.name); } }
+  report.info.section8 = Math.round(s.width) + 'x' + Math.round(s.height) + ' delta ' + delta + ' moved: ' + moved.join(', ');
+});
+
+// ---------- checks ----------
+await step('checks', async () => {
+  let gray = 0, unstyled = 0;
+  const walk = n => {
+    if ('fills' in n && n.fills !== figma.mixed) for (const f of n.fills) if (f.type === 'SOLID' && Math.abs(f.color.r - .5) < .01 && Math.abs(f.color.g - .5) < .01 && Math.abs(f.color.b - .5) < .01 && !(f.boundVariables && f.boundVariables.color)) gray++;
+    if (n.type === 'TEXT' && !n.textStyleId) unstyled++;
+    if ('children' in n) n.children.forEach(walk);
+  };
+  sec8.children.forEach(walk);
+  report.info.grayFills = gray; report.info.unstyledText = unstyled;
+  const bs = sec8.children.map(n => ({ n: n.name, b: n.absoluteBoundingBox })); const ov = [];
+  for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) { const a = bs[i].b, b = bs[j].b; if (a && b && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) ov.push(bs[i].n + ' x ' + bs[j].n); }
+  report.info.overlaps = ov.length ? ov : 'none';
+  report.info.sec8kids = sec8.children.map(n => n.type + ':' + n.name + ' ' + Math.round(n.width) + 'x' + Math.round(n.height)).join(' | ');
+});
+
+
+// ---------- pages (derived from Messenger / Default · Desktop) ----------
+const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
 const web = p02.children.find(n => n.type === 'SECTION' && /^Web/.test(n.name));
 const msgSec = web.children.find(n => n.type === 'SECTION' && n.name === 'Messenger');
-const mapSec = web.children.find(n => n.type === 'SECTION' && n.name === 'Map');
-if (!msgSec || !mapSec) throw new Error('Messenger or Map section missing in Web');
-const srcPage = mapSec.children.find(n => n.type === 'FRAME' && /^Map \/ Default.*Desktop$/.test(n.name)) || mapSec.children.find(n => n.type === 'FRAME' && /Desktop$/.test(n.name));
-if (!srcPage) throw new Error('map desktop page not found');
-const tickSrc = srcPage.children.find(n => n.name === 'Ticker'), navSrc = srcPage.children.find(n => n.name === 'Navigation');
-if (!tickSrc || !navSrc) throw new Error('Ticker or Navigation missing in ' + srcPage.name);
+if (!msgSec) throw new Error('Messenger section missing in Web');
+const srcPage = msgSec.children.find(n => n.type === 'FRAME' && n.name === 'Messenger / Default · Desktop');
+if (!srcPage) throw new Error('Default page missing: run step 240 first');
 const slotX = i => 80 + i * 1920;
-const W = 1440, H = 900, TOP = Math.round(navSrc.y + navSrc.height);
-const SIL = (role, g) => silSet.children.find(v => v.name === 'Role=' + role + ', Gender=' + g + ', Size=40');
-const SEARCH_SVG = SV('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>');
-for (const o of msgSec.children.slice()) { if (o.name === 'Messenger / Default · Desktop') o.remove(); }
-
-async function chatRow(d) {
-  const v = chatSet.children.find(x => x.name === 'State=' + d.state + ', Unread=' + (d.count ? 'True' : 'False')); if (!v) throw new Error('chat variant missing');
-  const r = v.createInstance(); r.name = 'Chat · ' + d.name;
-  await setIn(r, 'Name', d.name); await setIn(r, 'Time', d.time); await setIn(r, 'Meta', d.meta); await setIn(r, 'Preview', d.preview); if (d.count) await setIn(r, 'Count', String(d.count));
-  const si = r.findOne(n => n.type === 'INSTANCE' && n.name === 'Silhouette'); const sv = SIL(d.role, d.gender); if (si && sv) si.swapComponent(sv); else report.info.silhouetteMissing = (report.info.silhouetteMissing || '') + d.name + ' ';
-  return r;
+const emptySet = findSet(/^Thread empty state$/), personSet = findSet(/^Person row$/);
+const NAMES = ['Messenger / No chats · Desktop', 'Messenger / No chat selected · Desktop', 'Messenger / New message · Desktop'];
+for (const o of msgSec.children.slice()) { if (NAMES.indexOf(o.name) >= 0) o.remove(); }
+function derive(name, i) {
+  const c = srcPage.clone(); c.name = name; msgSec.appendChild(c); c.x = slotX(i); c.y = srcPage.y;
+  const lp = c.findOne(n => n.name === 'Chat list panel'), th = c.findOne(n => n.name === 'Thread'), chats = lp.findOne(n => n.name === 'Chats');
+  return { c, lp, th, chats };
 }
-async function bubble(side, type, status, texts) {
-  const v = bubSet.children.find(x => x.name === 'Side=' + side + ', Type=' + type + ', Status=' + status); if (!v) throw new Error('bubble variant missing: ' + side + type + status);
-  const b = v.createInstance(); b.name = 'Message · ' + side + ' · ' + type;
-  for (const k of Object.keys(texts)) await setIn(b, k, texts[k]);
-  return b;
-}
+function clearThread(th) { for (const k of th.children.slice()) k.remove(); th.primaryAxisAlignItems = 'CENTER'; th.counterAxisAlignItems = 'CENTER'; }
+async function addEmpty(th, kind) { const e = emptySet.children.find(v => v.name === 'Kind=' + kind).createInstance(); e.name = 'Thread empty state'; th.appendChild(e); return e; }
+function deselectAll(chats) { for (const r of chats.children) { const cp = r.componentProperties || {}; const key = Object.keys(cp).find(k => /^State/.test(k)); if (key && cp[key].value === 'Selected') r.setProperties({ [key]: 'Default' }); } }
 
-await step('Messenger / Default · Desktop', async () => {
+await step('Messenger / No chats · Desktop', async () => {
   await figma.setCurrentPageAsync(p02);
-  const page = figma.createFrame(); page.name = 'Messenger / Default · Desktop'; msgSec.appendChild(page);
-  page.resize(W, H); page.x = slotX(0); page.y = 80; page.clipsContent = true; fillV(page, 'color/bg/canvas');
-  for (const [src, nm] of [[tickSrc, 'Ticker'], [navSrc, 'Navigation']]) { const c = src.clone(); c.name = nm; page.appendChild(c); c.x = 0; c.y = src.y; }
-  // list panel
-  const lp = figma.createFrame(); lp.name = 'Chat list panel'; page.appendChild(lp); lp.resize(400, H - TOP); lp.x = 0; lp.y = TOP; lp.clipsContent = true;
-  lp.layoutMode = 'VERTICAL'; lp.primaryAxisSizingMode = 'FIXED'; lp.counterAxisSizingMode = 'FIXED'; lp.itemSpacing = 0; fillV(lp, 'color/bg/surface');
-  lp.strokes = [P(V('color/border/default'))]; lp.strokeAlign = 'INSIDE'; lp.strokeTopWeight = 0; lp.strokeLeftWeight = 0; lp.strokeBottomWeight = 0; lp.strokeRightWeight = 1;
-  const ph = frame('Panel header', 'HORIZONTAL'); ph.primaryAxisAlignItems = 'SPACE_BETWEEN'; ph.counterAxisAlignItems = 'CENTER'; PAD(ph, 'spacing/md', 'spacing/md', 'spacing/sm', 'spacing/md');
-  lp.appendChild(ph); ph.layoutSizingHorizontal = 'FILL';
-  ph.appendChild(await txt('Title', 'Messages', 'Heading/H4', 'color/text/primary'));
-  ph.appendChild(await mkBtn('New message', 'Secondary'));
-  const sw = frame('Search wrap', 'HORIZONTAL'); PAD(sw, 'spacing/2xs', 'spacing/md', 'spacing/md', 'spacing/md'); lp.appendChild(sw); sw.layoutSizingHorizontal = 'FILL';
-  const sf = frame('Search chats', 'HORIZONTAL'); sf.counterAxisAlignItems = 'CENTER'; GAP(sf, 'spacing/xs'); fillV(sf, 'color/bg/subtle'); RAD(sf, 'radius/full'); PAD(sf, 'spacing/sm', 'spacing/md', 'spacing/sm', 'spacing/md');
-  sw.appendChild(sf); sf.layoutSizingHorizontal = 'FILL';
-  const si = mkIcon(SEARCH_SVG, 'color/icon/default', 20); si.name = 'Icon · Search'; sf.appendChild(si);
-  const sp = await txt('Placeholder', 'Search chats', 'Body/Default', 'color/text/secondary'); sf.appendChild(sp);
-  const chats = frame('Chats', 'VERTICAL'); lp.appendChild(chats); chats.layoutSizingHorizontal = 'FILL'; chats.layoutGrow = 1; chats.clipsContent = true;
-  const data = [
-    { name: 'Tom Reilly', meta: 'Manager · Riverside FC', preview: 'Happy to arrange a trial next week.', time: '14:35', state: 'Selected', role: 'Other', gender: 'Male' },
-    { name: 'Sofia Lindqvist', meta: 'Intermediary · Lindqvist Sports', preview: 'Can you send the medical report?', time: '12:10', count: 2, state: 'Default', role: 'Other', gender: 'Female' },
-    { name: 'Ana Ferreira', meta: 'Referee · Lisbon FA', preview: 'Thanks for the update.', time: 'Yesterday', state: 'Default', role: 'Other', gender: 'Female' },
-    { name: 'Jake Morris', meta: 'Football fan', preview: 'Is the Saturday match still on?', time: 'Yesterday', count: 1, state: 'Default', role: 'Other', gender: 'Male' },
-    { name: 'Leo Marsh', meta: 'Player · Riverside FC', preview: 'I will be there on Monday.', time: 'Mon', state: 'Default', role: 'Player', gender: 'Male' },
-    { name: 'Daniel Brandt', meta: 'Head scout · Spreeufer FC', preview: 'Let us talk after the weekend.', time: '24 Oct', state: 'Default', role: 'Other', gender: 'Male' },
-    { name: 'Mateus Kowalczyk-Brun', meta: 'Player · Coastal United', preview: 'Looking forward to it, see you soon.', time: '22 Oct', state: 'Default', role: 'Player', gender: 'Male' }
-  ];
-  for (const d of data) { const r = await chatRow(d); chats.appendChild(r); r.layoutSizingHorizontal = 'FILL'; }
-  // thread
-  const th = figma.createFrame(); th.name = 'Thread'; page.appendChild(th); th.resize(W - 400, H - TOP); th.x = 400; th.y = TOP; th.clipsContent = true;
-  th.layoutMode = 'VERTICAL'; th.primaryAxisSizingMode = 'FIXED'; th.counterAxisSizingMode = 'FIXED'; th.itemSpacing = 0; fillV(th, 'color/bg/canvas');
-  const hd = thSet.children.find(v => v.name === 'Device=Desktop').createInstance(); hd.name = 'Thread header'; th.appendChild(hd); hd.layoutSizingHorizontal = 'FILL';
-  await setIn(hd, 'Meta', 'Manager · Riverside FC');
-  const ms = frame('Messages', 'VERTICAL'); th.appendChild(ms); ms.layoutSizingHorizontal = 'FILL'; ms.layoutGrow = 1; ms.clipsContent = true; ms.primaryAxisAlignItems = 'MAX'; ms.counterAxisAlignItems = 'MIN';
-  PAD(ms, 'spacing/lg', 'spacing/xl', 'spacing/lg', 'spacing/xl'); GAP(ms, 'spacing/md');
-  const dv = divComp.createInstance(); dv.name = 'Date divider'; ms.appendChild(dv); dv.layoutSizingHorizontal = 'FILL';
-  const msgs = [
-    ['Theirs', 'Text', 'None', { Time: '10:12' }],
-    ['Mine', 'Text', 'Read', { Time: '10:20' }],
-    ['Mine', 'File', 'Read', { 'File name': 'Shortlist_left_backs.pdf', Time: '14:32' }],
-    ['Theirs', 'Text', 'None', { 'Message text': 'Thanks, got it. The second name looks interesting.', Time: '14:34' }],
-    ['Mine', 'Text', 'Sent', { 'Message text': 'Happy to arrange a trial next week.', Time: '14:35' }]
-  ];
-  for (const [s, t, st, tx] of msgs) { const b = await bubble(s, t, st, tx); ms.appendChild(b); b.layoutSizingHorizontal = 'FILL'; }
-  const cmp = compSet.children.find(v => v.name === 'Kind=Default').createInstance(); cmp.name = 'Composer'; th.appendChild(cmp); cmp.layoutSizingHorizontal = 'FILL';
-  // section fit
-  msgSec.resizeWithoutConstraints(Math.ceil(page.x + W + 80), Math.ceil(page.y + H + 80)); web.appendChild(msgSec);
-  // checks
-  let contentH = 0; for (const k of ms.children) contentH += k.height; contentH += ms.itemSpacing * (ms.children.length - 1) + ms.paddingTop + ms.paddingBottom;
-  report.info.page = { size: Math.round(page.width) + 'x' + Math.round(page.height), top: TOP, list: Math.round(lp.width) + 'x' + Math.round(lp.height), thread: Math.round(th.width) + 'x' + Math.round(th.height) };
-  report.info.messagesFit = 'content ' + Math.round(contentH) + ' of ' + Math.round(ms.height) + (contentH > ms.height + 1 ? ' OVERFLOW' : ' ok');
-  report.info.chatsFit = 'rows ' + chats.children.length + ' height ' + Math.round(chats.height) + ' rows total ' + Math.round(chats.children.reduce((a, k) => a + k.height, 0));
-  report.info.msgWidths = ms.children.map(k => k.name + ' ' + Math.round(k.width) + 'x' + Math.round(k.height)).join(' | ');
-  report.info.bubbleWidths = ms.children.filter(k => /^Message/.test(k.name)).map(k => { const b = k.findOne(n => n.name === 'Bubble'); return k.name + ' bubble ' + (b ? Math.round(b.width) : '?'); }).join(' | ');
+  const d = derive(NAMES[0], 1);
+  for (const k of d.chats.children.slice()) k.remove();
+  d.chats.primaryAxisAlignItems = 'CENTER'; d.chats.counterAxisAlignItems = 'CENTER';
+  const eb = frame('Empty list', 'VERTICAL'); GAP(eb, 'spacing/xs'); eb.counterAxisAlignItems = 'CENTER'; PAD(eb, 'spacing/2xl', 'spacing/lg', 'spacing/2xl', 'spacing/lg');
+  d.chats.appendChild(eb); eb.layoutSizingHorizontal = 'FILL';
+  const t1 = await txt('Title', 'No conversations yet', 'Label/Default Strong', 'color/text/primary'); eb.appendChild(t1);
+  const t2 = await txt('Body', 'Messages you send and receive will appear here.', 'Body/Small', 'color/text/secondary'); eb.appendChild(t2); t2.layoutSizingHorizontal = 'FILL'; t2.textAutoResize = 'HEIGHT'; t2.textAlignHorizontal = 'CENTER';
+  d.chats.primaryAxisAlignItems = 'MIN';
+  clearThread(d.th); await addEmpty(d.th, 'No chats');
+});
+await step('Messenger / No chat selected · Desktop', async () => {
+  const d = derive(NAMES[1], 2);
+  deselectAll(d.chats);
+  clearThread(d.th); await addEmpty(d.th, 'Not selected');
+});
+await step('Messenger / New message · Desktop', async () => {
+  const d = derive(NAMES[2], 3);
+  deselectAll(d.chats);
+  for (const k of d.th.children.slice()) k.remove(); d.th.primaryAxisAlignItems = 'MIN'; d.th.counterAxisAlignItems = 'MIN';
+  const hd = frame('New message header', 'HORIZONTAL'); hd.primaryAxisAlignItems = 'SPACE_BETWEEN'; hd.counterAxisAlignItems = 'CENTER'; PAD(hd, 'spacing/md', 'spacing/lg', 'spacing/md', 'spacing/lg'); fillV(hd, 'color/bg/surface');
+  hd.strokes = [P(V('color/border/default'))]; hd.strokeAlign = 'INSIDE'; hd.strokeTopWeight = 0; hd.strokeLeftWeight = 0; hd.strokeRightWeight = 0; hd.strokeBottomWeight = 1;
+  d.th.appendChild(hd); hd.layoutSizingHorizontal = 'FILL';
+  hd.appendChild(await txt('Title', 'New message', 'Label/Large Strong', 'color/text/primary'));
+  hd.appendChild(await mkBtn('Cancel', 'Subtle'));
+  const to = frame('To row', 'HORIZONTAL'); to.counterAxisAlignItems = 'CENTER'; GAP(to, 'spacing/md'); PAD(to, 'spacing/md', 'spacing/lg', 'spacing/md', 'spacing/lg'); fillV(to, 'color/bg/surface');
+  d.th.appendChild(to); to.layoutSizingHorizontal = 'FILL';
+  to.appendChild(await txt('To', 'To', 'Label/Default Strong', 'color/text/secondary'));
+  const inp = frame('Recipient field', 'HORIZONTAL'); inp.counterAxisAlignItems = 'CENTER'; GAP(inp, 'spacing/xs'); fillV(inp, 'color/bg/surface'); RAD(inp, 'radius/md'); PAD(inp, 'spacing/sm', 'spacing/md', 'spacing/sm', 'spacing/md');
+  inp.strokes = [P(V('color/border/focus'))]; inp.strokeWeight = 2; inp.strokeAlign = 'INSIDE';
+  to.appendChild(inp); inp.layoutGrow = 1; inp.layoutAlign = 'STRETCH';
+  const ty = await txt('Typed', 'Tom', 'Body/Default', 'color/text/primary'); inp.appendChild(ty);
+  const res = frame('Results', 'VERTICAL'); d.th.appendChild(res); res.layoutSizingHorizontal = 'FILL';
+  const people = [['Tom Reilly', 'Manager · Riverside FC', 'Other', 'Male'], ['Tomas Weber', 'Player · Nordpark SC', 'Player', 'Male'], ['Tommaso Rossi', 'Scout · Havelblick United', 'Other', 'Male']];
+  for (let i = 0; i < people.length; i++) {
+    const r = personSet.children.find(v => v.name === 'State=' + (i === 0 ? 'Hover' : 'Default')).createInstance(); r.name = 'Person · ' + people[i][0];
+    await setIn(r, 'Name', people[i][0]); await setIn(r, 'Meta', people[i][1]);
+    const si = r.findOne(n => n.type === 'INSTANCE' && n.name === 'Silhouette'); const sv = silSet.children.find(v => v.name === 'Role=' + people[i][2] + ', Gender=' + people[i][3] + ', Size=40'); if (si && sv) si.swapComponent(sv);
+    res.appendChild(r); r.layoutSizingHorizontal = 'FILL';
+  }
+});
+await step('fit + checks', async () => {
+  let right = 0, bottom = 0; for (const ch of msgSec.children) { right = Math.max(right, ch.x + ch.width); bottom = Math.max(bottom, ch.y + ch.height); }
+  msgSec.resizeWithoutConstraints(Math.ceil(right + 80), Math.ceil(bottom + 80)); web.appendChild(msgSec);
+  const pages = msgSec.children.filter(n => n.type === 'FRAME');
+  report.info.pages = pages.map(p => p.name + ' @' + Math.round(p.x) + ',' + Math.round(p.y) + ' ' + Math.round(p.width) + 'x' + Math.round(p.height)).join(' | ');
   const gray = [], unst = []; const walk = n => { if ('fills' in n && n.fills !== figma.mixed) n.fills.forEach(f => { if (f.type === 'SOLID' && Math.abs(f.color.r - .5) < .01 && Math.abs(f.color.g - .5) < .01 && Math.abs(f.color.b - .5) < .01 && !(f.boundVariables && f.boundVariables.color)) gray.push(n.name); }); if (n.type === 'TEXT' && !n.textStyleId) unst.push(n.name); if ('children' in n) n.children.forEach(walk); };
-  walk(page); report.info.grayFills = gray.length ? gray.slice(0, 8) : 'none'; report.info.unstyledText = unst.length ? unst.slice(0, 8) : 'none';
+  pages.forEach(walk); report.info.pageGrayFills = gray.length ? gray.slice(0, 8) : 'none'; report.info.pageUnstyledText = unst.length ? unst.slice(0, 8) : 'none';
   const A = msgSec.absoluteBoundingBox, hits = []; for (const s of web.children) { if (s === msgSec || !s.absoluteBoundingBox) continue; const B = s.absoluteBoundingBox; if (A.x < B.x + B.width && B.x < A.x + A.width && A.y < B.y + B.height && B.y < A.y + A.height) hits.push(s.name); }
   report.info.sectionOverlaps = hits.length ? hits : 'none';
   report.info.msgSection = Math.round(msgSec.width) + 'x' + Math.round(msgSec.height) + ' at ' + Math.round(msgSec.x) + ',' + Math.round(msgSec.y) + ' · web ' + Math.round(web.width) + 'x' + Math.round(web.height);
+  const nm = msgSec.findOne(n => n.name === 'Messenger / New message · Desktop');
+  if (nm) { const th = nm.findOne(n => n.name === 'Thread'); report.info.newMessageThread = th.children.map(k => k.name + ' ' + Math.round(k.width) + 'x' + Math.round(k.height)).join(' | '); }
+  const nc = msgSec.findOne(n => n.name === 'Messenger / No chats · Desktop'); if (nc) { const ch = nc.findOne(n => n.name === 'Chats'); report.info.noChatsList = ch.children.map(k => k.name + ' ' + Math.round(k.width) + 'x' + Math.round(k.height)).join(' | '); }
 });
-
 await figma.setCurrentPageAsync(startPage);
 return report;
