@@ -1,4 +1,4 @@
-// step 244 · Revert Delete for everyone: Delete message dialog back to view-only text, remove Delete received variants and Radio option, re-grid Confirm dialog (fixes overlap in 01)
+// step 245 · Messenger pages (desktop): Blocked, Add to contacts, Unverified member; widens Web platform if needed
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -47,76 +47,77 @@ const oldRight = sec8.x + sec8.width;
 
 const IMG = f => 'https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/gallery/' + f;
 
-
+const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
+const compSet = findSet(/^Composer$/), noticeSet = findSet(/^Page notice$/);
+for (const [n, v] of [['Composer', compSet], ['Page notice', noticeSet]]) if (!v) throw new Error('component missing: ' + n);
 async function setText(node, str) { for (const seg of node.getStyledTextSegments(['fontName'])) await figma.loadFontAsync(seg.fontName); node.characters = str; }
-await step('Confirm dialog: revert options', async () => {
-  const dset = sec8.children.find(n => n.type === 'COMPONENT_SET' && n.name === 'Confirm dialog'); if (!dset) throw new Error('Confirm dialog set not found');
-  for (const v of dset.children.slice()) { if (/^Kind=Delete received/.test(v.name)) v.remove(); }
-  for (const device of ['Desktop', 'Mobile']) {
-    const v = dset.children.find(x => x.name === 'Kind=Delete message, Device=' + device); if (!v) throw new Error('variant missing: Delete message ' + device);
-    const o = v.findOne(n => n.name === 'Delete options'); if (o) o.remove();
-    const body = v.findOne(n => n.name === 'Body'); await setText(body, 'This removes the message from your view only. Tom will still see it.');
-    body.textAutoResize = 'HEIGHT'; v.primaryAxisSizingMode = 'AUTO';
-  }
-  // re-grid: rows by Kind, columns by Device, y from real heights
-  const kinds = ['Delete message', 'Block person'];
-  const colX = {}; for (const d of ['Desktop', 'Mobile']) { const v = dset.children.find(x => x.name === 'Kind=Delete message, Device=' + d); colX[d] = v.x; }
-  let y = Math.min.apply(null, dset.children.map(v => v.y));
-  for (const k of kinds) {
-    let h = 0;
-    for (const d of ['Desktop', 'Mobile']) { const v = dset.children.find(x => x.name === 'Kind=' + k + ', Device=' + d); if (!v) throw new Error('variant missing ' + k + ' ' + d); v.x = colX[d]; v.y = y; h = Math.max(h, Math.ceil(v.height)); }
-    y += h + 40;
-  }
-  let right = 0, bottom = 0; for (const v of dset.children) { right = Math.max(right, v.x + v.width); bottom = Math.max(bottom, v.y + v.height); }
-  dset.resizeWithoutConstraints(Math.ceil(right + 32), Math.ceil(bottom + 32));
-  report.info.confirmDialog = dset.children.map(v => v.name.replace('Kind=', '').replace('Device=', '') + ' ' + Math.round(v.width) + 'x' + Math.round(v.height) + ' @' + Math.round(v.x) + ',' + Math.round(v.y)).join(' | ');
-  const ov = []; for (let i = 0; i < dset.children.length; i++) for (let j = i + 1; j < dset.children.length; j++) { const a = dset.children[i], b = dset.children[j]; if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) ov.push(a.name + ' x ' + b.name); }
-  report.info.confirmDialogOverlaps = ov.length ? ov : 'none';
-  report.info.deleteBodies = dset.children.filter(v => /Delete message/.test(v.name)).map(v => v.findOne(n => n.name === 'Body').characters.slice(0, 30) + ' (' + v.findOne(n => n.name === 'Body').parent.name + ')').join(' | ');
-});
-await step('Remove Radio option', async () => {
-  const stillUsed = [];
-  const rs = sec8.children.find(n => n.type === 'COMPONENT_SET' && n.name === 'Radio option');
-  if (rs) { rs.remove(); report.info.radio = 'removed'; } else report.info.radio = 'not present';
-});
+const setIn = async (root, nm, str) => { const t = root.findOne(n => n.type === 'TEXT' && n.name === nm); if (!t) throw new Error('text "' + nm + '" not found in ' + root.name); await setText(t, str); };
+const web = p02.children.find(n => n.type === 'SECTION' && /^Web/.test(n.name));
+const msgSec = web.children.find(n => n.type === 'SECTION' && n.name === 'Messenger');
+if (!msgSec) throw new Error('Messenger section missing in Web');
+const srcPage = msgSec.children.find(n => n.type === 'FRAME' && n.name === 'Messenger / Default · Desktop');
+if (!srcPage) throw new Error('Default page missing');
+const slotX = i => 80 + i * 1920;
+const NAMES = ['Messenger / Blocked · Desktop', 'Messenger / Add to contacts · Desktop', 'Messenger / Unverified · Desktop'];
+for (const o of msgSec.children.slice()) { if (NAMES.indexOf(o.name) >= 0) o.remove(); }
+function derive(name, i) {
+  const c = srcPage.clone(); c.name = name; msgSec.appendChild(c); c.x = slotX(i); c.y = srcPage.y;
+  return { c, lp: c.findOne(n => n.name === 'Chat list panel'), th: c.findOne(n => n.name === 'Thread'), ms: c.findOne(n => n.name === 'Messages'), chats: c.findOne(n => n.name === 'Chats') };
+}
+function swapComposer(c, kind) {
+  const cmp = c.findOne(n => n.type === 'INSTANCE' && n.name === 'Composer'); if (!cmp) throw new Error('Composer instance missing in ' + c.name);
+  const v = compSet.children.find(x => x.name === 'Kind=' + kind); if (!v) throw new Error('Composer variant missing: ' + kind);
+  cmp.swapComponent(v); return cmp;
+}
 
-// ---------- section layout ----------
-await step('relayout section 8', async () => {
-  const s = sec8;
-  const kids = s.children.slice();
-  const left = s.x + 80; let y = s.y + 80, first = true;
-  for (const k of kids) { const b = k.absoluteBoundingBox; if (!b) continue; if (!first) y += 120; k.x += left - b.x; k.y += y - b.y; y += b.height; first = false; }
-  let right = -Infinity, bottom = -Infinity;
-  for (const k of s.children) { const b = k.absoluteBoundingBox; if (!b) continue; if (b.x + b.width > right) right = b.x + b.width; if (b.y + b.height > bottom) bottom = b.y + b.height; }
-  s.resizeWithoutConstraints(Math.ceil(right - s.x + 80), Math.ceil(bottom - s.y + 80));
-  const delta = Math.round(s.x + s.width - oldRight);
-  const moved = [];
-  if (delta !== 0) for (const o of p01.children) { if (o.type === 'SECTION' && o !== s && o.x > s.x) { o.x += delta; moved.push(o.name); } }
-  report.info.section8 = Math.round(s.width) + 'x' + Math.round(s.height) + ' delta ' + delta + ' moved: ' + moved.join(', ');
+await step('Messenger / Blocked · Desktop', async () => {
+  await figma.setCurrentPageAsync(p02);
+  const d = derive(NAMES[0], 9); const cmp = swapComposer(d.c, 'Blocked');
+  report.info.blocked = 'composer ' + Math.round(cmp.width) + 'x' + Math.round(cmp.height) + ' · title: ' + cmp.findOne(n => n.name === 'Title').characters;
 });
-
-// ---------- checks ----------
-await step('checks', async () => {
-  let gray = 0, unstyled = 0;
-  const walk = n => {
-    if ('fills' in n && n.fills !== figma.mixed) for (const f of n.fills) if (f.type === 'SOLID' && Math.abs(f.color.r - .5) < .01 && Math.abs(f.color.g - .5) < .01 && Math.abs(f.color.b - .5) < .01 && !(f.boundVariables && f.boundVariables.color)) gray++;
-    if (n.type === 'TEXT' && !n.textStyleId) unstyled++;
-    if ('children' in n) n.children.forEach(walk);
-  };
-  sec8.children.forEach(walk);
-  report.info.grayFills = gray; report.info.unstyledText = unstyled;
-  const bs = sec8.children.map(n => ({ n: n.name, b: n.absoluteBoundingBox })); const ov = [];
-  for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) { const a = bs[i].b, b = bs[j].b; if (a && b && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) ov.push(bs[i].n + ' x ' + bs[j].n); }
-  report.info.overlaps = ov.length ? ov : 'none';
-  report.info.sec8kids = sec8.children.map(n => n.type + ':' + n.name + ' ' + Math.round(n.width) + 'x' + Math.round(n.height)).join(' | ');
+await step('Messenger / Add to contacts · Desktop', async () => {
+  const d = derive(NAMES[1], 10);
+  const tom = d.chats.findOne(n => n.name === 'Chat · Tom Reilly'); if (tom) tom.remove();
+  for (const k of d.ms.children.slice()) k.remove();
+  d.ms.primaryAxisAlignItems = 'CENTER'; d.ms.counterAxisAlignItems = 'CENTER';
+  const eb = frame('Empty thread', 'VERTICAL'); GAP(eb, 'spacing/2xs'); eb.counterAxisAlignItems = 'CENTER'; d.ms.appendChild(eb);
+  eb.appendChild(await txt('Title', 'No messages yet', 'Label/Default Strong', 'color/text/primary'));
+  eb.appendChild(await txt('Body', 'Your messages with Tom will appear here.', 'Body/Small', 'color/text/secondary'));
+  const cmp = swapComposer(d.c, 'Add to contacts');
+  report.info.addToContacts = 'chats ' + d.chats.children.length + ' · composer ' + Math.round(cmp.width) + 'x' + Math.round(cmp.height);
 });
-
-
-await step('Messenger / Delete message page: recenter dialog', async () => {
-  const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync(); await figma.setCurrentPageAsync(p02);
-  const web = p02.children.find(n => n.type === 'SECTION' && /^Web/.test(n.name)); const msgSec = web.children.find(n => n.type === 'SECTION' && n.name === 'Messenger');
-  const pd = msgSec.children.find(n => n.name === 'Messenger / Delete message · Desktop');
-  if (pd) { const d = pd.findOne(n => /^Confirm dialog/.test(n.name)); d.y = Math.round((pd.height - d.height) / 2); d.x = Math.round((pd.width - d.width) / 2); report.info.deletePage = 'dialog ' + Math.round(d.width) + 'x' + Math.round(d.height) + ' at ' + Math.round(d.x) + ',' + Math.round(d.y); } else report.info.deletePage = 'page not found';
+await step('Messenger / Unverified · Desktop', async () => {
+  const d = derive(NAMES[2], 11);
+  const nav = d.c.findOne(n => n.name === 'Navigation'); const TOP = Math.round(nav.y + nav.height);
+  const nt = noticeSet.children.find(v => v.name === 'Device=Desktop').createInstance(); nt.name = 'Page notice'; d.c.appendChild(nt); nt.x = 0; nt.y = TOP;
+  const NH = Math.round(nt.height);
+  d.lp.y += NH; d.lp.resize(d.lp.width, d.lp.height - NH); d.th.y += NH; d.th.resize(d.th.width, d.th.height - NH);
+  const kids = d.ms.children.slice(); for (const k of kids) if (/Mine/.test(k.name)) k.remove();
+  const theirs = d.ms.children.filter(k => /Theirs/.test(k.name));
+  if (theirs[1]) await setIn(theirs[1], 'Message text', 'Could you also send a short video of each player?');
+  swapComposer(d.c, 'Disabled');
+  report.info.unverified = 'notice ' + Math.round(nt.width) + 'x' + NH + ' at y ' + TOP + ' · text: ' + nt.findOne(n => n.name === 'Text').characters + ' · list ' + Math.round(d.lp.height) + ' thread ' + Math.round(d.th.height) + ' · messages ' + d.ms.children.map(k => k.name).join(', ');
+});
+await step('fit, widen Web, checks', async () => {
+  let right = 0, bottom = 0; for (const ch of msgSec.children) { right = Math.max(right, ch.x + ch.width); bottom = Math.max(bottom, ch.y + ch.height); }
+  msgSec.resizeWithoutConstraints(Math.ceil(right + 80), Math.ceil(bottom + 80)); web.appendChild(msgSec);
+  const need = Math.ceil(msgSec.x + msgSec.width + 80 - web.width);
+  report.info.webBefore = Math.round(web.width) + 'x' + Math.round(web.height);
+  if (need > 0) {
+    const oldRight = web.x + web.width; web.resizeWithoutConstraints(web.width + need, web.height);
+    const moved = []; for (const o of p02.children) { if (o !== web && o.x >= oldRight - 1) { o.x += need; moved.push(o.name); } }
+    report.info.webWidened = need + ' px, moved: ' + moved.join(', ');
+  } else report.info.webWidened = 'no';
+  report.info.webAfter = Math.round(web.width) + 'x' + Math.round(web.height);
+  const pages = msgSec.children.filter(n => n.type === 'FRAME');
+  report.info.pages = pages.map(p => p.name.replace('Messenger / ', '').replace(' · Desktop', '') + ' @' + Math.round(p.x)).join(' | ');
+  const gray = [], unst = []; const walk = n => { if ('fills' in n && n.fills !== figma.mixed) n.fills.forEach(f => { if (f.type === 'SOLID' && Math.abs(f.color.r - .5) < .01 && Math.abs(f.color.g - .5) < .01 && Math.abs(f.color.b - .5) < .01 && !(f.boundVariables && f.boundVariables.color)) gray.push(n.name); }); if (n.type === 'TEXT' && !n.textStyleId) unst.push(n.name); if ('children' in n) n.children.forEach(walk); };
+  pages.forEach(walk); report.info.pageGrayFills = gray.length ? gray.slice(0, 8) : 'none'; report.info.pageUnstyledText = unst.length ? unst.slice(0, 8) : 'none';
+  const A = msgSec.absoluteBoundingBox, hits = []; for (const s of p02.children) { if (s === web || !s.absoluteBoundingBox) continue; const B = s.absoluteBoundingBox; if (A.x < B.x + B.width && B.x < A.x + A.width && A.y < B.y + B.height && B.y < A.y + A.height) hits.push(s.name); }
+  report.info.platformOverlaps = hits.length ? hits : 'none';
+  const sibs = []; for (const s of web.children) { if (s === msgSec || !s.absoluteBoundingBox) continue; const B = s.absoluteBoundingBox; if (A.x < B.x + B.width && B.x < A.x + A.width && A.y < B.y + B.height && B.y < A.y + A.height) sibs.push(s.name); }
+  report.info.sectionOverlaps = sibs.length ? sibs : 'none';
+  report.info.topLevel = p02.children.map(s => s.name + ' @' + Math.round(s.x) + ',' + Math.round(s.y) + ' ' + Math.round(s.width) + 'x' + Math.round(s.height)).join(' | ');
 });
 await figma.setCurrentPageAsync(startPage);
 return report;
