@@ -1,96 +1,129 @@
-// step 248 · READ-ONLY inspect: Header component set, Icon button set, Navigation instances on Home / Own profile / Map / Messenger (Web + Mobile), Account menu, Sticky action bar, Profile actions (no changes)
+// step 249 · Header messages icon: Icon button set gets Icon=Messages (clone of Notifications, Lucide message-square, badge "2"); Header Logged in (Desktop + Mobile) gets the instance left of the bell
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const pageOf = re => figma.root.children.find(p => re.test(p.name));
 const R = n => Math.round(n * 10) / 10;
-const dims = n => R(n.width) + 'x' + R(n.height);
-const kids = n => ('children' in n) ? n.children : [];
-function tree(n, depth, max, out, indent) {
-  if (out.length > 400) return;
-  const extra = n.type === 'TEXT' ? ' "' + String(n.characters).slice(0, 30) + '"' : '';
-  const vis = n.visible === false ? ' (hidden)' : '';
-  const lay = ('layoutMode' in n && n.layoutMode !== 'NONE') ? ' ' + n.layoutMode[0] + ' gap' + (n.itemSpacing || 0) : '';
-  out.push(indent + n.type[0] + ':' + n.name + ' ' + dims(n) + ' @' + R(n.x) + ',' + R(n.y) + lay + extra + vis);
-  if (depth < max && n.type !== 'TEXT') for (const c of kids(n)) tree(c, depth + 1, max, out, indent + '  ');
-}
-function findAllComp(page, re) {
-  return page.findAll(n => (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') && re.test(n.name) && !(n.parent && n.parent.type === 'COMPONENT_SET'));
-}
+const BB = n => n.absoluteBoundingBox;
 const p01 = pageOf(/^01/), p02 = pageOf(/^02/);
 await p01.loadAsync(); await p02.loadAsync();
+await figma.setCurrentPageAsync(p01);
 
-await step('header set', async () => {
-  const sets = findAllComp(p01, /^Header$/i);
-  report.info.headerSets = sets.map(s => s.type + ':' + s.name + ' ' + dims(s) + ' parent=' + (s.parent ? s.parent.name : '-'));
-  for (const s of sets) {
-    const vs = s.type === 'COMPONENT_SET' ? s.children : [s];
-    report.info.headerVariants = vs.map(v => v.name + ' ' + dims(v));
-    const out = []; tree(vs[0], 0, 4, out, ''); report.info.headerTreeFirst = out;
-    const mob = vs.find(v => /mobile/i.test(v.name));
-    if (mob && mob !== vs[0]) { const o2 = []; tree(mob, 0, 4, o2, ''); report.info.headerTreeMobile = o2; }
-    if (s.type === 'COMPONENT_SET') report.info.headerProps = Object.keys(s.componentPropertyDefinitions).map(k => k + ':' + s.componentPropertyDefinitions[k].type);
+const iconSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Icon button');
+const headerSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Header');
+if (!iconSet || !headerSet) throw new Error('Icon button or Header set not found');
+
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+const MSG_NAME = 'Icon button · Messages';
+
+let msgVariant = null;
+
+await step('clean previous run', async () => {
+  const old = iconSet.children.find(c => c.name === 'Icon=Messages');
+  let removed = 0;
+  for (const v of headerSet.children) for (const i of v.findAll(n => n.type === 'INSTANCE' && n.name === MSG_NAME)) { i.remove(); removed++; }
+  if (old) { old.remove(); }
+  report.info.cleaned = { instancesRemoved: removed, variantRemoved: !!old };
+});
+
+await step('build Icon=Messages variant', async () => {
+  const notif = iconSet.children.find(c => c.name === 'Icon=Notifications');
+  if (!notif) throw new Error('Icon=Notifications variant missing');
+  const last = iconSet.children.reduce((a, c) => (c.y + c.height > a ? c.y + c.height : a), 0);
+  const clone = notif.clone();
+  iconSet.appendChild(clone);
+  clone.name = 'Icon=Messages';
+  clone.x = notif.x; clone.y = last + 40;
+  const bell = clone.findOne(n => /^Icon · Bell$/.test(n.name));
+  if (!bell) throw new Error('Bell frame not found in clone');
+  const oldVec = bell.findOne(n => n.type === 'VECTOR');
+  const oldStrokes = oldVec.strokes, oldW = oldVec.strokeWeight;
+  const idx = clone.children.indexOf(bell);
+  const svg = figma.createNodeFromSvg(SVG);
+  svg.name = 'Icon · Messages';
+  svg.fills = [];
+  clone.insertChild(idx, svg);
+  svg.resize(20, 20);
+  for (const v of svg.findAll(n => n.type === 'VECTOR')) {
+    v.fills = []; v.strokes = oldStrokes; v.strokeWeight = oldW; v.strokeCap = 'ROUND'; v.strokeJoin = 'ROUND';
+    v.constraints = { horizontal: 'SCALE', vertical: 'SCALE' };
   }
+  bell.remove();
+  const badgeCount = clone.findOne(n => n.type === 'TEXT' && n.name === 'Count');
+  if (badgeCount) { await figma.loadFontAsync(badgeCount.fontName); badgeCount.characters = '2'; }
+  iconSet.resizeWithoutConstraints(iconSet.width, clone.y + clone.height + 32);
+  msgVariant = clone;
+  report.info.msgVariant = clone.name + ' ' + R(clone.width) + 'x' + R(clone.height) + ' @' + R(clone.x) + ',' + R(clone.y);
+  report.info.msgStrokeBound = JSON.stringify(oldStrokes[0] && oldStrokes[0].boundVariables ? Object.keys(oldStrokes[0].boundVariables) : 'none');
+  report.info.iconSetVariants = iconSet.children.map(c => c.name).join(' | ');
+  report.info.iconSetSize = R(iconSet.width) + 'x' + R(iconSet.height);
 });
 
-await step('icon button set', async () => {
-  const sets = findAllComp(p01, /^Icon button$/i);
-  report.info.iconButtonSets = sets.map(s => s.type + ':' + s.name + ' ' + dims(s) + ' parent=' + (s.parent ? s.parent.name : '-'));
-  for (const s of sets) {
-    const vs = s.type === 'COMPONENT_SET' ? s.children : [s];
-    report.info.iconButtonVariants = vs.map(v => v.name + ' ' + dims(v) + ' @' + R(v.x) + ',' + R(v.y));
-    if (s.type === 'COMPONENT_SET') report.info.iconButtonProps = Object.keys(s.componentPropertyDefinitions).map(k => k + ':' + s.componentPropertyDefinitions[k].type);
-    const out = []; tree(vs[0], 0, 3, out, ''); report.info.iconButtonTreeFirst = out;
-    const more = vs.find(v => /More/.test(v.name)); if (more) { const o2 = []; tree(more, 0, 3, o2, ''); report.info.iconButtonTreeMore = o2; }
-  }
-});
-
-await step('menu icon names', async () => {
-  const sets = findAllComp(p01, /^Menu icon$/i);
-  for (const s of sets) report.info.menuIconVariants = (s.type === 'COMPONENT_SET' ? s.children : [s]).map(v => v.name);
-});
-
-await step('navigation instances', async () => {
+await step('add to Header Logged in (Desktop + Mobile)', async () => {
+  if (!msgVariant) throw new Error('variant not built');
   const rows = [];
-  for (const [label, re] of [['Web', /^Web$/], ['Mobile', /^Mobile$/]]) {
-    const plat = p02.children.find(n => re.test(n.name)); if (!plat) { rows.push(label + ': missing'); continue; }
-    const navs = plat.findAll(n => n.type === 'INSTANCE' && /^Navigation/.test(n.name));
-    const byParent = {};
-    for (const n of navs) { let p = n.parent; while (p && p.parent && p.parent.type !== 'SECTION') p = p.parent; const sec = (p && p.parent) ? p.parent.name : '?'; byParent[sec] = (byParent[sec] || 0) + 1; }
-    rows.push(label + ' Navigation instances: ' + navs.length + ' | per sub-section: ' + JSON.stringify(byParent));
-    const first = navs[0];
-    if (first) {
-      const out = []; tree(first, 0, 5, out, ''); report.info['navTree' + label] = out;
-      const m = await first.getMainComponentAsync();
-      report.info['navMain' + label] = m ? (m.parent && m.parent.type === 'COMPONENT_SET' ? m.parent.name + ' / ' : '') + m.name : 'none';
-      report.info['navProps' + label] = JSON.stringify(first.componentProperties);
-    }
+  for (const v of headerSet.children) {
+    if (!/State=Logged in/.test(v.name)) continue;
+    const isMobile = /Device=Mobile/.test(v.name);
+    const holder = v.findOne(n => n.name === (isMobile ? 'Header actions' : 'Account actions'));
+    if (!holder) { report.errors.push('holder missing in ' + v.name); continue; }
+    const bellBtn = holder.children.find(c => c.name === 'Icon button · Notifications');
+    if (!bellBtn) { report.errors.push('bell button missing in ' + v.name); continue; }
+    const inst = msgVariant.createInstance();
+    inst.name = MSG_NAME;
+    holder.insertChild(holder.children.indexOf(bellBtn), inst);
+    const cnt = inst.findOne(n => n.type === 'TEXT' && n.name === 'Count');
+    if (cnt) { await figma.loadFontAsync(cnt.fontName); cnt.characters = '2'; }
+    rows.push(v.name + ' -> holder children: ' + holder.children.map(c => c.name + '(' + R(c.width) + ')').join(', ') + ' | holder ' + R(holder.width) + 'x' + R(holder.height));
   }
-  report.info.navRows = rows;
+  report.info.headerRows = rows;
 });
 
-await step('account menu + states board', async () => {
-  const boards = p01.findAll(n => /Header . account states|Account menu/i.test(n.name) && (n.type === 'FRAME' || n.type === 'SECTION' || n.type === 'COMPONENT_SET' || n.type === 'COMPONENT'));
-  report.info.accountBoards = boards.map(b => b.type + ':' + b.name + ' ' + dims(b));
-  const b = boards.find(x => /account states/i.test(x.name));
-  if (b) { const out = []; tree(b, 0, 2, out, ''); report.info.accountStatesTree = out; }
+await step('verify header layout (no overlaps)', async () => {
+  const out = [];
+  for (const v of headerSet.children) {
+    if (!/State=Logged in/.test(v.name)) continue;
+    const parts = v.children.map(c => ({ n: c.name, b: BB(c) }));
+    const ov = [];
+    for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
+      const a = parts[i].b, b = parts[j].b;
+      if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) ov.push(parts[i].n + ' x ' + parts[j].n);
+    }
+    const vb = BB(v);
+    const outside = parts.filter(p => p.b.x < vb.x - 1 || p.b.x + p.b.width > vb.x + vb.width + 1).map(p => p.n);
+    out.push(v.name + ' | ' + parts.map(p => p.n + '@' + R(p.b.x - vb.x) + '+' + R(p.b.width)).join(' ; ') + ' | overlaps: ' + (ov.length ? ov.join(', ') : 'none') + ' | outside: ' + (outside.length ? outside.join(', ') : 'none'));
+  }
+  report.info.headerLayout = out;
 });
 
-await step('profile actions + sticky bar', async () => {
-  const web = p02.children.find(n => /^Web$/.test(n.name)), mob = p02.children.find(n => /^Mobile$/.test(n.name));
-  const pa = web.findAll(n => /^Profile actions$/.test(n.name)).slice(0, 4);
-  report.info.profileActionsCount = web.findAll(n => /^Profile actions$/.test(n.name)).length;
-  report.info.profileActionsSamples = pa.map(n => { const owner = (() => { let p = n; while (p && p.parent && p.parent.type !== 'SECTION') p = p.parent; return p ? p.name : '?'; })(); return owner + ' :: ' + kids(n).map(c => c.name + '(' + dims(c) + ')').join(' | '); });
-  const own = web.findAll(n => /^Profile actions$/.test(n.name))[0];
-  if (own) { const out = []; tree(own, 0, 3, out, ''); report.info.profileActionsTree = out; }
-  const sb = mob.findAll(n => n.type === 'INSTANCE' && /Sticky action bar/.test(n.name));
-  report.info.stickyBarCount = sb.length;
-  if (sb[0]) { const out = []; tree(sb[0], 0, 3, out, ''); report.info.stickyBarTree = out; report.info.stickyBarProps = JSON.stringify(sb[0].componentProperties); }
-});
-
-await step('messages icon already present?', async () => {
+await step('set vs section containment', async () => {
+  const sec = iconSet.parent;
+  const sb = BB(sec), ib = BB(iconSet);
   const hits = [];
-  for (const p of [p01, p02]) for (const n of p.findAll(x => /message|mail|chat|bell|notif/i.test(x.name) && /Icon button|Icon ·|Menu icon/i.test(x.name))) hits.push(p.name.slice(0, 2) + ':' + n.type[0] + ':' + n.name);
-  report.info.messageLikeIcons = hits.slice(0, 25);
+  for (const s of sec.children) { if (s === iconSet) continue; const b = BB(s); if (!b) continue; if (ib.x < b.x + b.width && b.x < ib.x + ib.width && ib.y < b.y + b.height && b.y < ib.y + ib.height) hits.push(s.name); }
+  report.info.iconSetSection = { section: sec.name, sectionSize: R(sb.width) + 'x' + R(sb.height), setBottomInsideSection: R((sb.y + sb.height) - (ib.y + ib.height)), overlapsWithSiblings: hits.length ? hits : 'none' };
+});
+
+await step('propagation count in pages', async () => {
+  const res = {};
+  for (const label of ['Web', 'Mobile']) {
+    const plat = p02.children.find(n => n.name === label);
+    const navs = plat.findAll(n => n.type === 'INSTANCE' && /^Navigation/.test(n.name));
+    let withMsg = 0, loggedIn = 0;
+    for (const n of navs) {
+      const has = n.findOne(x => x.name === MSG_NAME);
+      const bell = n.findOne(x => x.name === 'Icon button · Notifications');
+      if (bell) loggedIn++;
+      if (has) withMsg++;
+    }
+    res[label] = { navigation: navs.length, loggedInNav: loggedIn, withMessagesIcon: withMsg };
+  }
+  report.info.propagation = res;
+});
+
+await step('grayFills check on new nodes', async () => {
+  let gray = 0;
+  for (const n of msgVariant.findAll(x => 'fills' in x && Array.isArray(x.fills))) for (const f of n.fills) if (f.type === 'SOLID' && Math.abs(f.color.r - 0.5) < 0.01 && Math.abs(f.color.g - 0.5) < 0.01 && Math.abs(f.color.b - 0.5) < 0.01 && !(f.boundVariables && f.boundVariables.color)) gray++;
+  report.info.grayFills = gray;
 });
 
 return report;
