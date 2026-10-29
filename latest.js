@@ -1,4 +1,4 @@
-// step 243 · Message menu (Copy, Edit, Forward, Delete; Side Mine/Theirs), Delete dialog with options (for me / for everyone), Radio option; menu icons copy, pencil, forward
+// step 244 · Revert Delete for everyone: Delete message dialog back to view-only text, remove Delete received variants and Radio option, re-grid Confirm dialog (fixes overlap in 01)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -47,118 +47,37 @@ const oldRight = sec8.x + sec8.width;
 
 const IMG = f => 'https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/gallery/' + f;
 
-const menuIconSet = findSet(/^Menu icon/), menuRowSet = findSet(/^Menu row/);
-if (!menuIconSet || !menuRowSet) throw new Error('Menu icon / Menu row not found');
+
 async function setText(node, str) { for (const seg of node.getStyledTextSegments(['fontName'])) await figma.loadFontAsync(seg.fontName); node.characters = str; }
-const setIn = async (root, nm, str) => { const t = root.findOne(n => n.type === 'TEXT' && n.name === nm); if (!t) throw new Error('text "' + nm + '" not found in ' + root.name); await setText(t, str); };
-for (const n of sec8.children.slice()) { if (n.name === 'Radio option') n.remove(); }
-
-// ---------- Menu icons: copy, pencil, forward ----------
-await step('Menu icon variants', async () => {
-  const base = menuIconSet.children.find(v => v.name === 'Icon=user'); if (!base) throw new Error('Icon=user missing');
-  const defs = [['copy', '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'], ['pencil', '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>'], ['forward', '<path d="m15 17 5-5-5-5"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/>']];
-  for (const [nm] of defs) { const old = menuIconSet.children.find(v => v.name === 'Icon=' + nm); if (old) old.remove(); }
-  let last = 0; for (const v of menuIconSet.children) if (v.y + v.height > last) last = v.y + v.height;
-  for (const [nm, body] of defs) {
-    const c = base.clone(); menuIconSet.appendChild(c); c.name = 'Icon=' + nm;
-    for (const k of c.children.slice()) k.remove();
-    const g = mkIcon(SV(body), 'color/icon/default', 20); g.name = 'Glyph'; c.appendChild(g); g.x = 0; g.y = 0;
-    c.x = base.x; c.y = last + 16; last = c.y + c.height;
-  }
-  menuIconSet.resizeWithoutConstraints(menuIconSet.width, last + 24);
-  report.info.menuIcons = menuIconSet.children.map(v => v.name.replace('Icon=', '')).join(' | ');
-});
-
-// ---------- Radio option ----------
-let radioSet = null;
-await step('Radio option', async () => {
-  const comps = [];
-  for (const sel of [true, false]) {
-    const c = figma.createComponent(); c.name = 'Selected=' + (sel ? 'True' : 'False'); sec8.appendChild(c);
-    c.resize(336, 64); c.layoutMode = 'HORIZONTAL'; c.primaryAxisSizingMode = 'FIXED'; c.counterAxisSizingMode = 'AUTO'; c.counterAxisAlignItems = 'MIN';
-    PAD(c, 'spacing/sm', 'spacing/sm', 'spacing/sm', 'spacing/sm'); GAP(c, 'spacing/sm'); RAD(c, 'radius/md');
-    fillV(c, sel ? 'color/bg/brand-subtle' : 'color/bg/surface'); c.strokes = [P(V(sel ? 'color/bg/brand' : 'color/border/default'))]; c.strokeWeight = 1; c.strokeAlign = 'INSIDE';
-    const rd = figma.createFrame(); rd.name = 'Radio'; rd.resize(20, 20); rd.layoutMode = 'HORIZONTAL'; rd.primaryAxisSizingMode = 'FIXED'; rd.counterAxisSizingMode = 'FIXED'; rd.primaryAxisAlignItems = 'CENTER'; rd.counterAxisAlignItems = 'CENTER';
-    rd.clipsContent = false; fillV(rd, 'color/bg/surface'); RAD(rd, 'radius/full'); rd.strokes = [P(V(sel ? 'color/bg/brand' : 'color/border/strong'))]; rd.strokeWeight = 2; rd.strokeAlign = 'INSIDE';
-    if (sel) { const dot = figma.createFrame(); dot.name = 'Dot'; dot.resize(10, 10); fillV(dot, 'color/bg/brand'); RAD(dot, 'radius/full'); rd.appendChild(dot); }
-    c.appendChild(rd); rd.layoutGrow = 0;
-    const col = frame('Text', 'VERTICAL'); c.appendChild(col); col.layoutGrow = 1; col.layoutAlign = 'STRETCH';
-    col.appendChild(await txt('Label', 'Delete for me', 'Label/Default Strong', 'color/text/primary'));
-    const sb = await txt('Sub', 'Removes the message from your view only.', 'Label/Small', 'color/text/secondary'); col.appendChild(sb); sb.layoutSizingHorizontal = 'FILL'; sb.textAutoResize = 'HEIGHT';
-    comps.push(c);
-  }
-  comps[0].x = 32; comps[0].y = 32; comps[1].x = 32; comps[1].y = 32 + Math.ceil(comps[0].height) + 40;
-  radioSet = figma.combineAsVariants(comps, sec8); radioSet.name = 'Radio option';
-  for (const ch of radioSet.children) { ch.x += 32; ch.y += 32; }
-  radioSet.resizeWithoutConstraints(radioSet.width + 64, radioSet.height + 64);
-  report.info.radio = radioSet.children.map(v => v.name + ' ' + Math.round(v.width) + 'x' + Math.round(v.height)).join(' | ');
-});
-
-// ---------- Message menu: Side = Mine / Theirs ----------
-async function row(label, icon, danger) {
-  const v = menuRowSet.children.find(x => x.name === 'State=Default, Tone=' + (danger ? 'Danger' : 'Default'));
-  if (!v) throw new Error('Menu row variant missing');
-  const r = v.createInstance(); r.name = 'Row · ' + label;
-  const lt = r.findOne(n => n.type === 'TEXT' && n.name === 'Label'); if (!lt) throw new Error('row Label missing'); await setText(lt, label);
-  const ic = r.findOne(n => n.type === 'INSTANCE' && n.name === 'Menu icon'); const iv = menuIconSet.children.find(x => x.name === 'Icon=' + icon);
-  if (!ic || !iv) throw new Error('menu icon swap failed for ' + icon);
-  ic.swapComponent(iv);
-  if (danger) for (const n of ic.findAll(x => x.type !== 'FRAME' && x.type !== 'GROUP' && x.strokes && x.strokes.length)) n.strokes = [P(V('color/text/danger'))];
-  return r;
-}
-function divider() { const r = figma.createRectangle(); r.name = 'Divider'; r.resize(264, 1); fillV(r, 'color/border/default'); return r; }
-await step('Message menu (Mine / Theirs)', async () => {
-  let set = sec8.children.find(n => n.type === 'COMPONENT_SET' && n.name === 'Message menu');
-  let mine = set ? set.children.find(v => v.name === 'Side=Mine') : sec8.children.find(n => n.type === 'COMPONENT' && n.name === 'Message menu');
-  if (!mine) throw new Error('Message menu component not found: run step 239 first');
-  if (set) { const old = set.children.find(v => v.name === 'Side=Theirs'); if (old) old.remove(); }
-  mine.name = 'Side=Mine';
-  for (const k of mine.children.slice()) k.remove();
-  const add = async (lb, ic, d) => { const r = await row(lb, ic, d); mine.appendChild(r); r.layoutSizingHorizontal = 'FILL'; };
-  await add('Copy text', 'copy', false); await add('Edit message', 'pencil', false); await add('Forward', 'forward', false);
-  const dv = divider(); mine.appendChild(dv); dv.layoutSizingHorizontal = 'FILL';
-  await add('Delete message', 'trash', true);
-  const theirs = mine.clone(); theirs.name = 'Side=Theirs';
-  const ed = theirs.findOne(n => n.name === 'Row · Edit message'); if (ed) ed.remove();
-  if (set) { set.appendChild(theirs); theirs.x = mine.x + Math.ceil(mine.width) + 40; theirs.y = mine.y; set.resizeWithoutConstraints(theirs.x + theirs.width + 32, Math.max(mine.y + mine.height, theirs.y + theirs.height) + 32); }
-  else { mine.x = 32; mine.y = 32; theirs.x = 32 + 320; theirs.y = 32; sec8.appendChild(theirs); set = figma.combineAsVariants([mine, theirs], sec8); set.name = 'Message menu'; for (const ch of set.children) { ch.x += 32; ch.y += 32; } set.resizeWithoutConstraints(set.width + 64, set.height + 64); }
-  report.info.messageMenu = set.children.map(v => v.name + ' ' + Math.round(v.width) + 'x' + Math.round(v.height) + ' rows ' + v.children.filter(k => /^Row/.test(k.name)).map(k => k.name.replace('Row · ', '')).join('/')).join(' | ');
-});
-
-// ---------- Confirm dialog: Delete message with options, Delete received ----------
-await step('Confirm dialog (Delete options)', async () => {
-  const dset = sec8.children.find(n => n.type === 'COMPONENT_SET' && n.name === 'Confirm dialog'); if (!dset) throw new Error('Confirm dialog set not found: run step 239 first');
-  const rA = radioSet.children.find(v => v.name === 'Selected=True'), rB = radioSet.children.find(v => v.name === 'Selected=False');
+await step('Confirm dialog: revert options', async () => {
+  const dset = sec8.children.find(n => n.type === 'COMPONENT_SET' && n.name === 'Confirm dialog'); if (!dset) throw new Error('Confirm dialog set not found');
+  for (const v of dset.children.slice()) { if (/^Kind=Delete received/.test(v.name)) v.remove(); }
   for (const device of ['Desktop', 'Mobile']) {
     const v = dset.children.find(x => x.name === 'Kind=Delete message, Device=' + device); if (!v) throw new Error('variant missing: Delete message ' + device);
-    const old = v.findOne(n => n.name === 'Delete options'); if (old) old.remove();
-    const body = v.findOne(n => n.name === 'Body'); await setText(body, 'Choose who this message is removed for.');
-    const opts = frame('Delete options', 'VERTICAL'); GAP(opts, 'spacing/xs');
-    const a = rA.createInstance(); a.name = 'Option · Delete for me'; opts.appendChild(a); a.layoutSizingHorizontal = 'FILL';
-    const b = rB.createInstance(); b.name = 'Option · Delete for everyone'; opts.appendChild(b); b.layoutSizingHorizontal = 'FILL';
-    await setIn(b, 'Label', 'Delete for everyone'); await setIn(b, 'Sub', 'Removes the message for you and Tom.');
-    const actions = v.findOne(n => n.name === 'Actions'); const idx = v.children.indexOf(actions);
-    v.insertChild(idx, opts); opts.layoutSizingHorizontal = 'FILL';
-    v.primaryAxisSizingMode = 'AUTO';
+    const o = v.findOne(n => n.name === 'Delete options'); if (o) o.remove();
+    const body = v.findOne(n => n.name === 'Body'); await setText(body, 'This removes the message from your view only. Tom will still see it.');
+    body.textAutoResize = 'HEIGHT'; v.primaryAxisSizingMode = 'AUTO';
   }
-  for (const device of ['Desktop', 'Mobile']) {
-    const oldR = dset.children.find(x => x.name === 'Kind=Delete received, Device=' + device); if (oldR) oldR.remove();
+  // re-grid: rows by Kind, columns by Device, y from real heights
+  const kinds = ['Delete message', 'Block person'];
+  const colX = {}; for (const d of ['Desktop', 'Mobile']) { const v = dset.children.find(x => x.name === 'Kind=Delete message, Device=' + d); colX[d] = v.x; }
+  let y = Math.min.apply(null, dset.children.map(v => v.y));
+  for (const k of kinds) {
+    let h = 0;
+    for (const d of ['Desktop', 'Mobile']) { const v = dset.children.find(x => x.name === 'Kind=' + k + ', Device=' + d); if (!v) throw new Error('variant missing ' + k + ' ' + d); v.x = colX[d]; v.y = y; h = Math.max(h, Math.ceil(v.height)); }
+    y += h + 40;
   }
-  let last = 0; for (const v of dset.children) if (v.y + v.height > last) last = v.y + v.height;
-  for (const device of ['Desktop', 'Mobile']) {
-    const src = dset.children.find(x => x.name === 'Kind=Block person, Device=' + device); if (!src) throw new Error('variant missing: Block person ' + device);
-    const c = src.clone(); dset.appendChild(c); c.name = 'Kind=Delete received, Device=' + device;
-    await setIn(c, 'Title', 'Delete message?'); await setIn(c, 'Body', 'This removes the message from your view only. Tom will still see it.');
-    const okBtn = c.findAll(n => n.type === 'INSTANCE' && /^Button/.test(n.name)).find(b => { const t = b.findOne(n => n.type === 'TEXT'); return t && t.characters === 'Block'; });
-    if (!okBtn) throw new Error('Block button not found in ' + c.name);
-    await setText(okBtn.findOne(n => n.type === 'TEXT'), 'Delete'); okBtn.name = 'Button · Delete';
-    c.x = src.x; c.y = last + 40;
-  }
-  let bottom = 0; for (const v of dset.children) if (v.y + v.height > bottom) bottom = v.y + v.height;
-  dset.resizeWithoutConstraints(dset.width, bottom + 32);
-  report.info.confirmDialog = dset.children.map(v => v.name.replace('Kind=', '').replace('Device=', '') + ' ' + Math.round(v.width) + 'x' + Math.round(v.height)).join(' | ');
-  const dv = dset.children.find(x => x.name === 'Kind=Delete message, Device=Desktop');
-  report.info.deleteTree = (function dd(n, d, out) { out.push('  '.repeat(d) + n.type + ' "' + n.name + '" ' + Math.round(n.width) + 'x' + Math.round(n.height)); if (d < 2 && 'children' in n) for (const k of n.children) dd(k, d + 1, out); return out; })(dv, 0, []);
+  let right = 0, bottom = 0; for (const v of dset.children) { right = Math.max(right, v.x + v.width); bottom = Math.max(bottom, v.y + v.height); }
+  dset.resizeWithoutConstraints(Math.ceil(right + 32), Math.ceil(bottom + 32));
+  report.info.confirmDialog = dset.children.map(v => v.name.replace('Kind=', '').replace('Device=', '') + ' ' + Math.round(v.width) + 'x' + Math.round(v.height) + ' @' + Math.round(v.x) + ',' + Math.round(v.y)).join(' | ');
+  const ov = []; for (let i = 0; i < dset.children.length; i++) for (let j = i + 1; j < dset.children.length; j++) { const a = dset.children[i], b = dset.children[j]; if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) ov.push(a.name + ' x ' + b.name); }
+  report.info.confirmDialogOverlaps = ov.length ? ov : 'none';
+  report.info.deleteBodies = dset.children.filter(v => /Delete message/.test(v.name)).map(v => v.findOne(n => n.name === 'Body').characters.slice(0, 30) + ' (' + v.findOne(n => n.name === 'Body').parent.name + ')').join(' | ');
+});
+await step('Remove Radio option', async () => {
+  const stillUsed = [];
+  const rs = sec8.children.find(n => n.type === 'COMPONENT_SET' && n.name === 'Radio option');
+  if (rs) { rs.remove(); report.info.radio = 'removed'; } else report.info.radio = 'not present';
 });
 
 // ---------- section layout ----------
@@ -193,21 +112,11 @@ await step('checks', async () => {
 });
 
 
-// ---------- pages: reposition menu and dialog (taller now) ----------
-await step('Messenger pages: menu and dialog positions', async () => {
+await step('Messenger / Delete message page: recenter dialog', async () => {
   const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync(); await figma.setCurrentPageAsync(p02);
   const web = p02.children.find(n => n.type === 'SECTION' && /^Web/.test(n.name)); const msgSec = web.children.find(n => n.type === 'SECTION' && n.name === 'Messenger');
-  const rel = (page, node) => { const a = node.absoluteBoundingBox, p = page.absoluteBoundingBox; return { x: Math.round(a.x - p.x), y: Math.round(a.y - p.y), w: Math.round(a.width), h: Math.round(a.height) }; };
-  const pm = msgSec.children.find(n => n.name === 'Messenger / Message menu · Desktop');
-  if (pm) {
-    const m = pm.findOne(n => n.name === 'Message menu'); const ms = pm.findOne(n => n.name === 'Messages'); const last = ms.children[ms.children.length - 1]; const bb = rel(pm, last.findOne(n => n.name === 'Bubble'));
-    m.y = Math.max(8, bb.y - m.height - 8); report.info.messageMenuPage = 'menu ' + Math.round(m.width) + 'x' + Math.round(m.height) + ' at ' + Math.round(m.x) + ',' + Math.round(m.y) + ' bubble top ' + bb.y;
-  } else report.info.messageMenuPage = 'page not found';
   const pd = msgSec.children.find(n => n.name === 'Messenger / Delete message · Desktop');
-  if (pd) {
-    const d = pd.findOne(n => /^Confirm dialog/.test(n.name)); d.y = Math.round((pd.height - d.height) / 2); d.x = Math.round((pd.width - d.width) / 2);
-    report.info.deletePage = 'dialog ' + Math.round(d.width) + 'x' + Math.round(d.height) + ' at ' + Math.round(d.x) + ',' + Math.round(d.y);
-  } else report.info.deletePage = 'page not found';
+  if (pd) { const d = pd.findOne(n => /^Confirm dialog/.test(n.name)); d.y = Math.round((pd.height - d.height) / 2); d.x = Math.round((pd.width - d.width) / 2); report.info.deletePage = 'dialog ' + Math.round(d.width) + 'x' + Math.round(d.height) + ' at ' + Math.round(d.x) + ',' + Math.round(d.y); } else report.info.deletePage = 'page not found';
 });
 await figma.setCurrentPageAsync(startPage);
 return report;
