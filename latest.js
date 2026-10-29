@@ -1,4 +1,4 @@
-// step 241 · Messenger components 4 (Thread empty state, Person row) + pages: No chats, No chat selected, New message (desktop, derived from Default)
+// step 241 · Messenger components 4 (Thread empty state, Person row, plus icon button) + pages: No chats, No chat selected, New message (desktop, derived from Default)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -87,6 +87,24 @@ await step('Thread empty state', async () => {
   report.info.threadEmpty = set.children.map(v => v.name + ' ' + Math.round(v.width) + 'x' + Math.round(v.height)).join(' | ');
 });
 
+// ---------- Icon button: New message (plus) ----------
+const ib = findSet(/^Icon button$/);
+if (!ib || ib.type !== 'COMPONENT_SET') throw new Error('Icon button set not found');
+await step('Icon button · New message', async () => {
+  const base = ib.children.find(v => v.name === 'Icon=Send');
+  if (!base) throw new Error('Icon=Send not found: run step 238 first');
+  const old = ib.children.find(v => v.name === 'Icon=New message'); if (old) old.remove();
+  const sorted = ib.children.slice().sort((a, b) => a.y - b.y);
+  const gap = sorted.length > 1 ? Math.max(16, Math.round(sorted[1].y - (sorted[0].y + sorted[0].height))) : 32;
+  let last = 0; for (const v of ib.children) if (v.y + v.height > last) last = v.y + v.height;
+  const c = base.clone(); ib.appendChild(c); c.name = 'Icon=New message';
+  for (const k of c.children.slice()) k.remove();
+  const ic = mkIcon(SV('<path d="M5 12h14"/><path d="M12 5v14"/>'), 'color/icon/inverse', 22); ic.name = 'Icon · New message'; c.appendChild(ic); if (c.layoutMode === 'NONE') { ic.x = 9; ic.y = 9; }
+  c.x = base.x; c.y = last + gap; last = c.y + c.height;
+  ib.resizeWithoutConstraints(ib.width, last + 32);
+  report.info.iconButton = ib.children.map(v => v.name).join(' | ');
+});
+
 // ---------- Person row ----------
 await step('Person row', async () => {
   const comps = [];
@@ -149,6 +167,14 @@ const srcPage = msgSec.children.find(n => n.type === 'FRAME' && n.name === 'Mess
 if (!srcPage) throw new Error('Default page missing: run step 240 first');
 const slotX = i => 80 + i * 1920;
 const emptySet = findSet(/^Thread empty state$/), personSet = findSet(/^Person row$/);
+await step('Default page: plus button instead of New message', async () => {
+  await figma.setCurrentPageAsync(p02);
+  const ph = srcPage.findOne(n => n.name === 'Panel header'); if (!ph) throw new Error('Panel header missing in Default page');
+  for (const k of ph.children.slice()) if (k.name === 'Button · New message' || k.name === 'New message') k.remove();
+  const v = ib.children.find(x => x.name === 'Icon=New message'); if (!v) throw new Error('Icon=New message variant missing');
+  const b = v.createInstance(); b.name = 'New message'; ph.appendChild(b);
+  report.info.panelHeader = ph.children.map(k => k.name + ' ' + Math.round(k.width) + 'x' + Math.round(k.height)).join(' | ');
+});
 const NAMES = ['Messenger / No chats · Desktop', 'Messenger / No chat selected · Desktop', 'Messenger / New message · Desktop'];
 for (const o of msgSec.children.slice()) { if (NAMES.indexOf(o.name) >= 0) o.remove(); }
 function derive(name, i) {
