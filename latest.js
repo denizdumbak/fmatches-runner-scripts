@@ -1,4 +1,4 @@
-// step 253 · Profile more-menu parts: Icon button gets Icon=More large (48), new Profile menu component (Block, Report) in 3 · Player profile, ⋯ added to Sticky action bar (both roles) and to Profile actions on other people's profiles (Web); no pages or arrows yet
+// step 254 · Profile more-menu pages: Web + Mobile "Profile menu" (menu open under the ⋯) and "Block person" (scrim + "Block Leo Marsh?" dialog) pages in Profiles · player, as viewport-sized clones of the Leo profile; sections re-stacked where they grew; no arrows or prototype yet
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const pageOf = re => figma.root.children.find(p => re.test(p.name));
@@ -6,131 +6,157 @@ const R = n => Math.round(n * 10) / 10;
 const BB = n => n.absoluteBoundingBox;
 const p01 = pageOf(/^01/), p02 = pageOf(/^02/);
 await p01.loadAsync(); await p02.loadAsync();
-await figma.setCurrentPageAsync(p01);
-
-const iconSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Icon button');
-const stickySet = p01.findOne(n => n.type === 'COMPONENT_SET' && /^Sticky action bar/.test(n.name));
-if (!iconSet || !stickySet) throw new Error('Icon button or Sticky action bar set not found');
+const allVars = await figma.variables.getLocalVariablesAsync();
+const V = name => allVars.find(x => x.name === name);
 const web = p02.children.find(n => n.name === 'Web'), mob = p02.children.find(n => n.name === 'Mobile');
-const MORE = 'Icon button · More';
-let moreLarge = null, profileMenu = null;
+const isNavAct = a => a && a.type === 'NODE' && a.navigation !== 'CHANGE_TO';
 
-const textsOf = n => n.findAll(t => t.type === 'TEXT').map(t => t.characters).join(',');
-const pageOfNode = n => { let p = n; while (p && p.parent && p.parent.type !== 'SECTION') p = p.parent; return p ? p.name : '?'; };
-const beforeSticky = mob.findAll(n => n.type === 'INSTANCE' && /Sticky action bar/.test(n.name)).map(i => pageOfNode(i) + ' | ' + textsOf(i));
+const menuComp = p01.findOne(n => n.type === 'COMPONENT' && n.name === 'Profile menu');
+const dlgSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Confirm dialog');
+if (!menuComp || !dlgSet) throw new Error('Profile menu or Confirm dialog not found (run step 253 first)');
+const dlgVariant = dev => dlgSet.children.find(v => v.name === 'Kind=Block person, Device=' + dev);
 
-await step('clean previous run', async () => {
-  let removed = 0;
-  for (const root of [stickySet, web, mob]) for (const i of root.findAll(n => n.type === 'INSTANCE' && n.name === MORE)) { i.remove(); removed++; }
-  const oldV = iconSet.children.find(c => c.name === 'Icon=More large'); if (oldV) oldV.remove();
-  const oldM = p01.findOne(n => n.type === 'COMPONENT' && n.name === 'Profile menu'); if (oldM) oldM.remove();
-  report.info.cleaned = { instancesRemoved: removed, variant: !!oldV, menu: !!oldM };
+const NAMES = { menuD: 'Profiles / Player / Profile menu · Desktop', blockD: 'Profiles / Player / Block person · Desktop', menuM: 'Profiles / Player / Profile menu · Mobile', blockM: 'Profiles / Player / Block person · Mobile' };
+const created = [];
+
+// scrim: reuse the one from the Messenger block page when there is one
+let scrimSource = null;
+await step('find scrim source', async () => {
+  const m = web.children.find(n => n.name === 'Messenger');
+  const pg = m && m.children.find(n => /Block person/.test(n.name));
+  scrimSource = pg ? pg.findOne(n => /scrim/i.test(n.name)) : null;
+  report.info.scrimSource = scrimSource ? scrimSource.name + ' ' + R(scrimSource.width) + 'x' + R(scrimSource.height) : 'none (fallback rectangle)';
 });
 
-await step('Icon=More large variant', async () => {
-  const star = iconSet.children.find(c => c.name === 'Icon=Star');
-  const more = iconSet.children.find(c => c.name === 'Icon=More');
-  if (!star || !more) throw new Error('Icon=Star or Icon=More missing');
-  const last = iconSet.children.reduce((a, c) => (c.y + c.height > a ? c.y + c.height : a), 0);
-  const clone = star.clone(); iconSet.appendChild(clone);
-  clone.name = 'Icon=More large'; clone.x = star.x; clone.y = last + 40;
-  const starIcon = clone.findOne(n => /^Icon · Star$/.test(n.name));
-  const moreIcon = more.findOne(n => /^Icon · More$/.test(n.name));
-  if (!starIcon || !moreIcon) throw new Error('icon frames not found');
-  const dots = moreIcon.clone();
-  clone.insertChild(clone.children.indexOf(starIcon), dots);
-  starIcon.remove();
-  dots.name = 'Icon · More';
-  iconSet.resizeWithoutConstraints(iconSet.width, clone.y + clone.height + 32);
-  moreLarge = clone;
-  report.info.moreLarge = clone.name + ' ' + R(clone.width) + 'x' + R(clone.height) + ' | icon ' + R(dots.width) + 'x' + R(dots.height) + ' @' + R(dots.x) + ',' + R(dots.y);
-  report.info.iconSetNow = iconSet.children.length + ' variants, ' + R(iconSet.width) + 'x' + R(iconSet.height);
-});
-
-await step('Profile menu component', async () => {
-  const thread = p01.findOne(n => n.type === 'COMPONENT' && n.name === 'Thread menu');
-  if (!thread) throw new Error('Thread menu component not found');
-  const sec = p01.children.find(n => n.type === 'SECTION' && /^3 · Player profile/.test(n.name));
-  if (!sec) throw new Error('Section 3 · Player profile not found');
-  const c = thread.clone(); sec.appendChild(c);
-  c.name = 'Profile menu';
-  for (const r of c.children.slice()) if (/Row · View profile|^Divider$/.test(r.name)) r.remove();
-  const sb = BB(sec);
-  let bottom = 0; for (const k of sec.children) { if (k === c) continue; const b = BB(k); if (b && b.y + b.height - sb.y > bottom) bottom = b.y + b.height - sb.y; }
-  c.x = 80; c.y = Math.ceil(bottom + 120);
-  sec.resizeWithoutConstraints(Math.max(sec.width, 80 + c.width + 80), Math.ceil(c.y + c.height + 80));
-  profileMenu = c;
-  report.info.profileMenu = c.name + ' ' + R(c.width) + 'x' + R(c.height) + ' rows: ' + c.children.map(r => r.name).join(' | ') + ' @' + R(c.x) + ',' + R(c.y) + ' in ' + sec.name + ' ' + R(sec.width) + 'x' + R(sec.height);
-  const out = [];
-  for (const o of sec.children) { if (o === c) continue; const a = BB(o), b = BB(c); if (a && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) out.push(o.name); }
-  report.info.profileMenuOverlaps = out.length ? out : 'none';
-});
-
-await step('Sticky action bar variants', async () => {
-  if (!moreLarge) throw new Error('variant missing');
-  const rows = [];
-  for (const v of stickySet.children) {
-    const msg = v.children.find(c => c.name === 'Button · Message');
-    const inst = moreLarge.createInstance(); inst.name = MORE;
-    v.appendChild(inst);
-    const grows = msg.layoutGrow === 1 || msg.layoutSizingHorizontal === 'FILL';
-    if (!grows) msg.resize(msg.width - 60, msg.height);
-    const last = v.children[v.children.length - 1];
-    rows.push(v.name + ' | msg ' + R(msg.width) + (grows ? ' (fill)' : ' (resized)') + ' | ' + v.children.map(c => c.name + '@' + R(c.x) + '+' + R(c.width)).join(' ; ') + ' | right edge ' + R(last.x + last.width) + ' of ' + R(v.width));
+function makeScrim(page, w, h) {
+  let s;
+  if (scrimSource) { s = scrimSource.clone(); }
+  else { s = figma.createRectangle(); s.name = 'Scrim'; const v = V('color/bg/inverse'); if (v) s.fills = [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: .5, g: .5, b: .5 } }, 'color', v)]; s.opacity = 0.5; }
+  page.appendChild(s);
+  s.layoutPositioning = 'ABSOLUTE'; s.x = 0; s.y = 0; s.resize(w, h); s.name = 'Scrim';
+  return s;
+}
+async function clearNav(root) {
+  let n = 0;
+  for (const x of [root].concat(root.findAll(() => true))) {
+    if (!('reactions' in x) || !x.reactions || !x.reactions.length) continue;
+    const keep = x.reactions.filter(r => !(r.actions || []).some(isNavAct));
+    if (keep.length !== x.reactions.length) { try { await x.setReactionsAsync(keep); n++; } catch (e) { } }
   }
-  report.info.stickyRows = rows;
-});
+  return n;
+}
+function fixToViewport(page, w, h) {
+  page.primaryAxisSizingMode = 'FIXED'; page.counterAxisSizingMode = 'FIXED';
+  page.resize(w, h); page.clipsContent = true;
+}
+function rel(page, node) { const a = BB(page), b = BB(node); return { x: b.x - a.x, y: b.y - a.y, w: b.width, h: b.height }; }
 
-await step('Profile actions on other people profiles (Web)', async () => {
-  if (!moreLarge) throw new Error('variant missing');
-  const done = [];
-  for (const secName of ['Profiles · other roles', 'Profiles · player']) {
-    const sec = web.children.find(n => n.name === secName); if (!sec) { report.errors.push('section missing ' + secName); continue; }
-    for (const pg of sec.children) {
-      if (pg.type !== 'FRAME') continue;
-      const pa = pg.findOne(n => n.name === 'Profile actions');
-      if (!pa || !pa.children.some(c => c.name === 'Button · Message')) continue;
-      const inst = moreLarge.createInstance(); inst.name = MORE;
-      pa.appendChild(inst);
-      const idn = pa.parent;
-      done.push(pg.name + ' | actions ' + R(pa.width) + 'x' + R(pa.height) + ' | parent ' + idn.name + ' ' + R(idn.width) + 'x' + R(idn.height));
+async function buildPage(srcName, newName, sec, kind, device) {
+  const src = sec.children.find(n => n.name === srcName);
+  if (!src) throw new Error('source page missing: ' + srcName);
+  const old = sec.children.find(n => n.name === newName); if (old) old.remove();
+  const pg = src.clone(); sec.appendChild(pg);
+  pg.name = newName;
+  report.info['navCleared ' + newName] = await clearNav(pg);
+  const W = device === 'Desktop' ? 1440 : 390, H = device === 'Desktop' ? 900 : 844;
+  fixToViewport(pg, W, H);
+  if (device === 'Mobile') { const bar = pg.findOne(n => /^Sticky action bar/.test(n.name)); if (bar) { bar.y = H - 81; } }
+  if (kind === 'menu') {
+    const inst = menuComp.createInstance(); inst.name = 'Profile menu';
+    pg.appendChild(inst); inst.layoutPositioning = 'ABSOLUTE';
+    if (device === 'Desktop') {
+      const btn = pg.findOne(n => n.type === 'INSTANCE' && n.name === 'Icon button · More');
+      if (!btn) throw new Error('⋯ button not found on ' + newName);
+      const r = rel(pg, btn);
+      let y = r.y + r.h + 8; if (y + inst.height > H - 16) y = r.y - 8 - inst.height;
+      inst.x = Math.round(r.x); inst.y = Math.round(y);
+      report.info['menu ' + newName] = 'button ' + R(r.x) + ',' + R(r.y) + ' ' + R(r.w) + 'x' + R(r.h) + ' -> menu ' + R(inst.x) + ',' + R(inst.y) + ' ' + R(inst.width) + 'x' + R(inst.height);
+    } else {
+      inst.x = 390 - 16 - inst.width; inst.y = H - 81 + 13 - 8 - inst.height;
+      report.info['menu ' + newName] = 'menu ' + R(inst.x) + ',' + R(inst.y) + ' ' + R(inst.width) + 'x' + R(inst.height) + ' (above the bar, right aligned)';
     }
+  } else {
+    makeScrim(pg, W, H);
+    const v = dlgVariant(device); if (!v) throw new Error('Block person dialog variant missing for ' + device);
+    const d = v.createInstance(); d.name = 'Confirm dialog · Block person';
+    pg.appendChild(d); d.layoutPositioning = 'ABSOLUTE';
+    d.x = Math.round((W - d.width) / 2); d.y = Math.round((H - d.height) / 2);
+    const title = d.findOne(n => n.type === 'TEXT' && n.name === 'Title');
+    if (title) { await figma.loadFontAsync(title.fontName); title.characters = 'Block Leo Marsh?'; }
+    report.info['dialog ' + newName] = R(d.x) + ',' + R(d.y) + ' ' + R(d.width) + 'x' + R(d.height) + ' title="' + (title ? title.characters : '?') + '"';
   }
-  report.info.profileActionsAdded = done;
-  report.info.profileActionsAddedCount = done.length;
-});
+  created.push(pg);
+  return pg;
+}
 
-await step('hide ⋯ on Directory (unclaimed) mobile bar', async () => {
-  const hidden = [];
-  for (const i of mob.findAll(n => n.type === 'INSTANCE' && /Sticky action bar/.test(n.name))) {
-    if (!/Directory/.test(pageOfNode(i))) continue;
-    const m = i.findOne(n => n.name === MORE); if (m) { m.visible = false; hidden.push(pageOfNode(i)); }
+async function growAndRestack(platform, label) {
+  const secs = platform.children.filter(n => n.type === 'SECTION').sort((a, b) => a.y - b.y || a.x - b.x);
+  const moved = [];
+  for (let i = 0; i < secs.length; i++) for (let j = 0; j < i; j++) {
+    const a = secs[j], b = secs[i];
+    const xo = a.x < b.x + b.width && b.x < a.x + a.width;
+    if (xo && b.y >= a.y && b.y < a.y + a.height + 160) { const ny = a.y + a.height + 160; if (ny !== b.y) { moved.push(b.name + ' ' + R(b.y) + '->' + R(ny)); b.y = ny; } }
   }
-  report.info.hiddenOnDirectory = hidden;
+  let right = 0, bottom = 0;
+  for (const s of platform.children) { right = Math.max(right, s.x + s.width); bottom = Math.max(bottom, s.y + s.height); }
+  const nw = Math.max(platform.width, right + 120), nh = Math.max(platform.height, bottom + 120);
+  const before = R(platform.width) + 'x' + R(platform.height);
+  platform.resizeWithoutConstraints(nw, nh);
+  report.info['restack ' + label] = { sectionsMoved: moved.length ? moved : 'none', platform: before + ' -> ' + R(nw) + 'x' + R(nh) };
+}
+
+await step('Web pages', async () => {
+  const sec = web.children.find(n => n.name === 'Profiles · player'); if (!sec) throw new Error('Web section Profiles · player missing');
+  const leo = sec.children.find(n => n.name === 'Profiles / Player · Desktop'); if (!leo) throw new Error('Leo Web page missing');
+  const menu = await buildPage('Profiles / Player · Desktop', NAMES.menuD, sec, 'menu', 'Desktop');
+  const block = await buildPage('Profiles / Player · Desktop', NAMES.blockD, sec, 'block', 'Desktop');
+  let bottom = 0; for (const k of sec.children) { if (k === menu || k === block) continue; bottom = Math.max(bottom, k.y + k.height); }
+  menu.x = leo.x; menu.y = Math.ceil(bottom + 160);
+  block.x = menu.x + 1440 + 160; block.y = menu.y;
+  sec.resizeWithoutConstraints(Math.max(sec.width, block.x + block.width + 80), Math.ceil(menu.y + 900 + 80));
+  report.info.webSection = sec.name + ' ' + R(sec.width) + 'x' + R(sec.height) + ' | new pages @ ' + R(menu.x) + ',' + R(menu.y) + ' and ' + R(block.x) + ',' + R(block.y);
+  await growAndRestack(web, 'Web');
 });
 
-await step('verify: sticky text overrides unchanged', async () => {
-  const after = mob.findAll(n => n.type === 'INSTANCE' && /Sticky action bar/.test(n.name)).map(i => pageOfNode(i) + ' | ' + textsOf(i));
-  const diff = after.filter((a, k) => a !== beforeSticky[k]);
-  report.info.stickyBefore = beforeSticky;
-  report.info.stickyTextChanged = diff.length ? diff : 'none';
-  const bad = [];
-  for (const i of mob.findAll(n => n.type === 'INSTANCE' && /Sticky action bar/.test(n.name))) {
-    const last = i.children[i.children.length - 1], b = BB(i), lb = BB(last);
-    if (last.visible !== false && lb.x + lb.width > b.x + b.width - 15) bad.push(pageOfNode(i));
-  }
-  report.info.stickyTooWide = bad.length ? bad : 'none';
+await step('Mobile pages', async () => {
+  const sec = mob.children.find(n => n.name === 'Profiles · player'); if (!sec) throw new Error('Mobile section Profiles · player missing');
+  const leo = sec.children.find(n => n.name === 'Profiles / Player · Mobile'); if (!leo) throw new Error('Leo Mobile page missing');
+  const menu = await buildPage('Profiles / Player · Mobile', NAMES.menuM, sec, 'menu', 'Mobile');
+  const block = await buildPage('Profiles / Player · Mobile', NAMES.blockM, sec, 'block', 'Mobile');
+  let bottom = 0; for (const k of sec.children) { if (k === menu || k === block) continue; bottom = Math.max(bottom, k.y + k.height); }
+  menu.x = leo.x; menu.y = Math.ceil(bottom + 160);
+  block.x = menu.x + 390 + 80; block.y = menu.y;
+  sec.resizeWithoutConstraints(Math.max(sec.width, block.x + block.width + 80), Math.ceil(menu.y + 844 + 80));
+  report.info.mobileSection = sec.name + ' ' + R(sec.width) + 'x' + R(sec.height) + ' | new pages @ ' + R(menu.x) + ',' + R(menu.y) + ' and ' + R(block.x) + ',' + R(block.y);
+  await growAndRestack(mob, 'Mobile');
 });
 
-await step('verify: language slot and header untouched', async () => {
-  const bad = [];
-  for (const page of [p02]) for (const t of page.findAll(n => n.type === 'TEXT' && n.name === 'EN' && n.parent && n.parent.name === 'Account actions')) if (t.characters !== 'EN') bad.push(pageOfNode(t));
-  report.info.langSlotNotEN = bad.length ? bad : 'none';
+await step('Mobile x follows Web width', async () => {
+  const nx = web.x + web.width + 400;
+  report.info.mobileX = R(mob.x) + ' -> ' + R(nx);
+  if (Math.abs(mob.x - nx) > 0.5) { mob.x = nx; }
 });
 
-await step('grayFills on new nodes', async () => {
-  let gray = 0;
-  for (const root of [moreLarge, profileMenu]) { if (!root) continue; for (const n of [root].concat(root.findAll(x => 'fills' in x))) if (Array.isArray(n.fills)) for (const f of n.fills) if (f.type === 'SOLID' && Math.abs(f.color.r - 0.5) < 0.01 && Math.abs(f.color.g - 0.5) < 0.01 && Math.abs(f.color.b - 0.5) < 0.01 && !(f.boundVariables && f.boundVariables.color)) gray++; }
+await step('flow starts: drop the ones copied with the clones', async () => {
+  await figma.setCurrentPageAsync(p02);
+  const ids = new Set(created.map(c => c.id));
+  const before = p02.flowStartingPoints.length;
+  p02.flowStartingPoints = p02.flowStartingPoints.filter(f => !ids.has(f.nodeId));
+  report.info.flowStarts = before + ' -> ' + p02.flowStartingPoints.length + ' (expected 16 kept)';
+});
+
+await step('verify', async () => {
+  const rows = created.map(pg => pg.name + ' ' + R(pg.width) + 'x' + R(pg.height) + ' | top children: ' + pg.children.slice(-3).map(c => c.name).join(' | '));
+  report.info.newPages = rows;
+  const outside = [];
+  for (const platform of [web, mob]) for (const s of platform.children.filter(n => n.type === 'SECTION')) for (const c of s.children) { if (c.x < -1 || c.y < -1 || c.x + c.width > s.width + 1 || c.y + c.height > s.height + 1) outside.push(platform.name + ' › ' + s.name + ' > ' + c.name); }
+  report.info.outsideParent = outside.length ? outside.slice(0, 10) : 'none';
+  const ov = [];
+  for (const platform of [web, mob]) { const ss = platform.children.filter(n => n.type === 'SECTION'); for (let i = 0; i < ss.length; i++) for (let j = i + 1; j < ss.length; j++) { const a = ss[i], b = ss[j]; if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) ov.push(platform.name + ': ' + a.name + ' x ' + b.name); } }
+  report.info.sectionOverlaps = ov.length ? ov : 'none';
+  const tops = {}; for (const platform of [web, mob]) tops[platform.name] = platform.children.map(s => s.name + ' @' + R(s.x) + ',' + R(s.y) + ' ' + R(s.width) + 'x' + R(s.height)).join(' | ');
+  report.info.platformSections = tops;
+  let gray = 0; for (const pg of created) for (const n of pg.findAll(x => 'fills' in x)) if (Array.isArray(n.fills)) for (const f of n.fills) if (f.type === 'SOLID' && Math.abs(f.color.r - 0.5) < 0.01 && Math.abs(f.color.g - 0.5) < 0.01 && Math.abs(f.color.b - 0.5) < 0.01 && !(f.boundVariables && f.boundVariables.color)) gray++;
   report.info.grayFills = gray;
 });
 
