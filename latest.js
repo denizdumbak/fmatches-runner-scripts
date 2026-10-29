@@ -1,4 +1,4 @@
-// step 237 · Messenger components 1 (01 › 8 · Messenger): Chat list item (State x Unread), Message bubble (Side x Type x Status), Date divider + read-only inspect of Menu icon / Menu row / Header logged in
+// step 238 · Messenger components 2 (01 › 8 · Messenger): Icon button variants (More, Back, Attach, Send), Composer (Kind x 5), Thread header (Device) + read-only inspect of Menu icon / Menu row / Header logged in (carried over from 237)
 
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
@@ -15,7 +15,7 @@ const RAD = (n, v) => { for (const k of ['topLeftRadius', 'topRightRadius', 'bot
 const fillV = (n, v) => { n.fills = [P(V(v))]; };
 const TS = {}; for (const s of await figma.getLocalTextStylesAsync()) TS[s.name] = s;
 await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
-for (const k of ['Label/Default', 'Label/Default Strong', 'Label/Small', 'Body/Small', 'Body/Default']) { if (!TS[k]) throw new Error('text style missing: ' + k); await figma.loadFontAsync(TS[k].fontName); }
+for (const k of ['Label/Default', 'Label/Default Strong', 'Label/Large Strong', 'Label/Small', 'Body/Small', 'Body/Default']) { if (!TS[k]) throw new Error('text style missing: ' + k); await figma.loadFontAsync(TS[k].fontName); }
 async function txt(name, chars, style, color) {
   const t = figma.createText(); t.name = name;
   await t.setTextStyleIdAsync(TS[style].id); t.characters = chars; t.fills = [P(V(color))];
@@ -31,6 +31,10 @@ const SV = body => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" 
 const SVG = {
   file: SV('<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>'),
   download: SV('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>'),
+  more: SV('<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>'),
+  back: SV('<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>'),
+  attach: SV('<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>'),
+  send: SV('<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>'),
   check: SV('<path d="M20 6 9 17l-5-5"/>'),
   checks: SV('<path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/>')
 };
@@ -40,121 +44,107 @@ if (!silSet) throw new Error('Silhouette set not found');
 const sec8 = p01.children.find(n => n.type === 'SECTION' && /^8 /.test(n.name));
 if (!sec8) throw new Error('Section 8 not found');
 const oldRight = sec8.x + sec8.width;
-for (const n of sec8.children.slice()) { if (['Chat list item', 'Message bubble', 'Date divider'].indexOf(n.name) >= 0) n.remove(); }
+for (const n of sec8.children.slice()) { if (['Composer', 'Thread header'].indexOf(n.name) >= 0) n.remove(); }
 const IMG = f => 'https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/gallery/' + f;
 
-// ---------- Chat list item ----------
-await step('Chat list item', async () => {
-  const variants = [];
-  const states = ['Default', 'Hover', 'Selected'];
-  for (let si = 0; si < states.length; si++) {
-    for (let ui = 0; ui < 2; ui++) {
-      const state = states[si], unread = ui === 1;
-      const c = figma.createComponent(); c.name = 'State=' + state + ', Unread=' + (unread ? 'True' : 'False');
-      sec8.appendChild(c);
-      c.resize(400, 80); c.layoutMode = 'HORIZONTAL'; c.primaryAxisSizingMode = 'FIXED'; c.counterAxisSizingMode = 'AUTO';
-      c.counterAxisAlignItems = 'MIN'; PAD(c, 'spacing/md', 'spacing/md', 'spacing/md', 'spacing/md'); GAP(c, 'spacing/sm');
-      fillV(c, state === 'Default' ? 'color/bg/surface' : state === 'Hover' ? 'color/bg/subtle' : 'color/bg/brand-subtle');
-      c.strokes = [P(V('color/border/default'))]; c.strokeAlign = 'INSIDE';
-      c.strokeTopWeight = 0; c.strokeLeftWeight = 0; c.strokeRightWeight = 0; c.strokeBottomWeight = 1;
-      // photo (silhouette fallback)
-      const photo = frame('Photo'); photo.resize(40, 40); photo.clipsContent = true; RAD(photo, 'radius/full');
-      const sv = silSet.children.find(v => v.name === 'Role=Other, Gender=Male, Size=40') || silSet.children[0];
-      const si0 = sv.createInstance(); si0.name = 'Silhouette'; photo.appendChild(si0); si0.x = 0; si0.y = 0;
-      c.appendChild(photo); photo.layoutGrow = 0;
-      // text column
-      const col = frame('Text', 'VERTICAL'); GAP(col, 'spacing/2xs'); c.appendChild(col); col.layoutGrow = 1; col.layoutAlign = 'STRETCH';
-      const top = frame('Top row', 'HORIZONTAL'); GAP(top, 'spacing/sm'); top.counterAxisAlignItems = 'CENTER'; col.appendChild(top); top.layoutSizingHorizontal = 'FILL';
-      const nm = await txt('Name', 'Tom Reilly', 'Label/Default Strong', 'color/text/primary'); top.appendChild(nm); nm.layoutGrow = 1; nm.textAutoResize = 'HEIGHT'; nm.textTruncation = 'ENDING'; nm.maxLines = 1;
-      const tm = await txt('Time', '14:32', 'Label/Small', unread ? 'color/text/brand' : 'color/text/secondary'); top.appendChild(tm);
-      const meta = await txt('Meta', 'Manager · Northgate Athletic', 'Label/Small', 'color/text/secondary'); col.appendChild(meta); meta.layoutSizingHorizontal = 'FILL'; meta.textAutoResize = 'HEIGHT'; meta.textTruncation = 'ENDING'; meta.maxLines = 1;
-      const prow = frame('Preview row', 'HORIZONTAL'); GAP(prow, 'spacing/sm'); prow.counterAxisAlignItems = 'CENTER'; col.appendChild(prow); prow.layoutSizingHorizontal = 'FILL';
-      const pv = await txt('Preview', 'Thanks, I will send the shortlist tomorrow.', 'Body/Small', unread ? 'color/text/primary' : 'color/text/secondary'); prow.appendChild(pv); pv.layoutGrow = 1; pv.textAutoResize = 'HEIGHT'; pv.textTruncation = 'ENDING'; pv.maxLines = 1;
-      if (unread) {
-        const b = frame('Unread badge', 'HORIZONTAL'); b.primaryAxisAlignItems = 'CENTER'; b.counterAxisAlignItems = 'CENTER'; fillV(b, 'color/bg/brand'); RAD(b, 'radius/full'); PAD(b, 'spacing/2xs', 'spacing/xs', 'spacing/2xs', 'spacing/xs');
-        const ct = await txt('Count', '2', 'Label/Small', 'color/text/inverse'); b.appendChild(ct); prow.appendChild(b);
-      }
-      variants.push(c);
-    }
+const btnSet = findSet(/^Button$/), badgeSet = findSet(/^Verification badge/);
+if (!btnSet || !badgeSet) throw new Error('Button or Verification badge set not found');
+async function setText(node, str) { const f = node.fontName === figma.mixed ? node.getRangeFontName(0, 1) : node.fontName; await figma.loadFontAsync(f); node.characters = str; }
+async function mkBtn(label, style) {
+  const bv = btnSet.children.find(v => new RegExp('Style=' + style).test(v.name) && /State=Default/.test(v.name)) || btnSet.children[0];
+  const b = bv.createInstance(); b.name = 'Button · ' + label; const cp = b.componentProperties || {};
+  const lk = Object.keys(cp).find(k => /^Label/.test(k)); const ik = Object.keys(cp).find(k => /^Icon/.test(k));
+  if (lk) b.setProperties({ [lk]: label }); if (ik) b.setProperties({ [ik]: false });
+  const bt = b.findOne(n => n.type === 'TEXT'); if (bt) await setText(bt, label); return b;
+}
+const ib = findSet(/^Icon button$/);
+if (!ib || ib.type !== 'COMPONENT_SET') throw new Error('Icon button set not found');
+const ibVar = n => { const v = ib.children.find(x => x.name === 'Icon=' + n); if (!v) throw new Error('Icon button variant missing: ' + n); return v.createInstance(); };
+const photo40 = () => {
+  const photo = frame('Photo'); photo.resize(40, 40); photo.clipsContent = true; RAD(photo, 'radius/full');
+  const sv = silSet.children.find(v => v.name === 'Role=Other, Gender=Male, Size=40') || silSet.children[0];
+  const i0 = sv.createInstance(); i0.name = 'Silhouette'; photo.appendChild(i0); i0.x = 0; i0.y = 0; return photo;
+};
+const topLine = c => { c.strokes = [P(V('color/border/default'))]; c.strokeAlign = 'INSIDE'; c.strokeTopWeight = 1; c.strokeLeftWeight = 0; c.strokeRightWeight = 0; c.strokeBottomWeight = 0; };
+const bottomLine = c => { c.strokes = [P(V('color/border/default'))]; c.strokeAlign = 'INSIDE'; c.strokeTopWeight = 0; c.strokeLeftWeight = 0; c.strokeRightWeight = 0; c.strokeBottomWeight = 1; };
+
+// ---------- Icon button variants ----------
+await step('Icon button variants', async () => {
+  const base = ib.children.find(v => v.name === 'Icon=Search');
+  if (!base) throw new Error('Icon=Search not found');
+  const defs = [['More', SVG.more], ['Back', SVG.back], ['Attach', SVG.attach], ['Send', SVG.send]];
+  for (const [nm] of defs) { const old = ib.children.find(v => v.name === 'Icon=' + nm); if (old) old.remove(); }
+  const sorted = ib.children.slice().sort((a, b) => a.y - b.y);
+  const gap = sorted.length > 1 ? Math.max(16, Math.round(sorted[1].y - (sorted[0].y + sorted[0].height))) : 32;
+  let last = 0; for (const v of ib.children) if (v.y + v.height > last) last = v.y + v.height;
+  for (const [nm, svg] of defs) {
+    const c = base.clone(); ib.appendChild(c); c.name = 'Icon=' + nm;
+    for (const k of c.children.slice()) k.remove();
+    const send = nm === 'Send';
+    if (send) fillV(c, 'color/bg/brand');
+    const ic = mkIcon(svg, send ? 'color/icon/inverse' : 'color/icon/default', 22); ic.name = 'Icon · ' + nm; c.appendChild(ic); if (c.layoutMode === 'NONE') { ic.x = 9; ic.y = 9; }
+    c.x = base.x; c.y = last + gap; last = c.y + c.height;
   }
-  const cols = { Default: 0, Hover: 1, Selected: 2 };
-  variants.forEach(v => { const st = /State=(\w+)/.exec(v.name)[1]; const un = /Unread=True/.test(v.name); v.x = 32 + cols[st] * 440; v.y = 32 + (un ? 1 : 0) * (Math.ceil(v.height) + 40); });
-  const set = figma.combineAsVariants(variants, sec8); set.name = 'Chat list item';
-  for (const ch of set.children) { ch.x += 32; ch.y += 32; }
-  set.resizeWithoutConstraints(set.width + 64, set.height + 64);
-  report.info.chatItem = { variants: set.children.map(v => v.name + ' ' + Math.round(v.width) + 'x' + Math.round(v.height)).join(' | '), set: Math.round(set.width) + 'x' + Math.round(set.height) };
+  ib.resizeWithoutConstraints(ib.width, last + 32);
+  report.info.iconButton = { variants: ib.children.map(v => v.name).join(' | '), size: Math.round(ib.width) + 'x' + Math.round(ib.height), moreLayout: ib.children.find(v => v.name === 'Icon=More').layoutMode };
 });
 
-// ---------- Message bubble ----------
-const photoImg = await figma.createImageAsync(IMG('gallery-b.jpg'));
-let maxWidthOk = true;
-await step('Message bubble', async () => {
-  const list = [];
-  for (const type of ['Text', 'Photo', 'File']) list.push(['Theirs', type, 'None']);
-  for (const status of ['Sent', 'Read', 'Failed']) for (const type of ['Text', 'Photo', 'File']) list.push(['Mine', type, status]);
+// ---------- Composer ----------
+await step('Composer', async () => {
+  const kinds = ['Default', 'Disabled', 'Add to contacts', 'Request pending', 'Blocked'];
   const comps = [];
-  for (const [side, type, status] of list) {
-    const mine = side === 'Mine', failed = status === 'Failed';
-    const tone = failed ? 'danger' : mine ? 'brand' : 'neutral';
-    const bubbleFill = tone === 'brand' ? 'color/bg/brand' : tone === 'danger' ? 'color/bg/danger-subtle' : 'color/bg/subtle';
-    const tcol = tone === 'brand' ? 'color/text/inverse' : 'color/text/primary';
-    const scol = tone === 'brand' ? 'color/text/inverse' : 'color/text/secondary';
-    const boxFill = tone === 'brand' ? 'color/bg/brand-hover' : 'color/bg/surface';
-    const icol = tone === 'brand' ? 'color/icon/inverse' : 'color/icon/brand';
-    const row = figma.createComponent(); row.name = 'Side=' + side + ', Type=' + type + ', Status=' + status; sec8.appendChild(row);
-    row.resize(976, 40); row.layoutMode = 'HORIZONTAL'; row.primaryAxisSizingMode = 'FIXED'; row.counterAxisSizingMode = 'AUTO';
-    row.primaryAxisAlignItems = mine ? 'MAX' : 'MIN'; row.counterAxisAlignItems = 'MIN'; row.fills = [];
-    const col = frame('Message', 'VERTICAL'); GAP(col, 'spacing/2xs'); col.counterAxisAlignItems = mine ? 'MAX' : 'MIN'; row.appendChild(col);
-    const bub = frame('Bubble', 'VERTICAL'); bub.counterAxisAlignItems = 'MIN'; fillV(bub, bubbleFill); RAD(bub, 'radius/lg');
-    bub.setBoundVariable(mine ? 'bottomRightRadius' : 'bottomLeftRadius', V('radius/xs'));
-    if (failed) { bub.strokes = [P(V('color/text/danger'))]; bub.strokeWeight = 1; bub.strokeAlign = 'INSIDE'; }
-    col.appendChild(bub);
-    try { bub.maxWidth = 480; } catch (e) { maxWidthOk = false; }
-    if (type === 'Text') {
-      PAD(bub, 'spacing/sm', 'spacing/md', 'spacing/sm', 'spacing/md');
-      const t = await txt('Message text', mine ? 'Sure, I will send it over tomorrow after the match.' : 'Hi Mark, we are looking for a left back for the winter window. Could you share your shortlist with me?', 'Body/Default', tcol);
-      bub.appendChild(t); t.layoutSizingHorizontal = 'FILL'; t.textAutoResize = 'HEIGHT';
-    } else if (type === 'Photo') {
-      PAD(bub, 'spacing/2xs', 'spacing/2xs', 'spacing/2xs', 'spacing/2xs');
-      const r = figma.createRectangle(); r.name = 'Photo'; r.resize(320, 214); RAD(r, 'radius/md');
-      r.fills = [{ type: 'IMAGE', scaleMode: 'FILL', imageHash: photoImg.hash }]; bub.appendChild(r);
+  for (const kind of kinds) {
+    const c = figma.createComponent(); c.name = 'Kind=' + kind; sec8.appendChild(c);
+    c.resize(1040, 80); c.layoutMode = 'HORIZONTAL'; c.primaryAxisSizingMode = 'FIXED'; c.counterAxisSizingMode = 'AUTO'; c.counterAxisAlignItems = 'CENTER';
+    PAD(c, 'spacing/md', 'spacing/lg', 'spacing/md', 'spacing/lg'); GAP(c, 'spacing/sm'); fillV(c, 'color/bg/surface'); topLine(c);
+    if (kind === 'Default' || kind === 'Disabled') {
+      const att = ibVar('Attach'); att.name = 'Attach'; c.appendChild(att);
+      const inp = frame('Input', 'HORIZONTAL'); inp.counterAxisAlignItems = 'CENTER'; fillV(inp, 'color/bg/subtle'); RAD(inp, 'radius/lg'); PAD(inp, 'spacing/sm', 'spacing/md', 'spacing/sm', 'spacing/md');
+      c.appendChild(inp); inp.layoutGrow = 1; inp.layoutAlign = 'STRETCH';
+      const ph = await txt('Placeholder', kind === 'Default' ? 'Write a message' : 'Messaging is available after you verify your email', 'Body/Default', 'color/text/secondary'); inp.appendChild(ph); ph.layoutSizingHorizontal = 'FILL'; ph.textAutoResize = 'HEIGHT'; ph.textTruncation = 'ENDING'; ph.maxLines = 1;
+      const snd = ibVar('Send'); snd.name = 'Send'; c.appendChild(snd);
+      if (kind === 'Disabled') { att.opacity = 0.5; inp.opacity = 0.5; snd.opacity = 0.5; }
     } else {
-      PAD(bub, 'spacing/sm', 'spacing/md', 'spacing/sm', 'spacing/sm'); bub.layoutMode = 'HORIZONTAL'; GAP(bub, 'spacing/sm'); bub.counterAxisAlignItems = 'CENTER';
-      const box = frame('File icon', 'HORIZONTAL'); box.resize(40, 40); box.layoutMode = 'HORIZONTAL'; box.primaryAxisSizingMode = 'FIXED'; box.counterAxisSizingMode = 'FIXED'; box.primaryAxisAlignItems = 'CENTER'; box.counterAxisAlignItems = 'CENTER'; fillV(box, boxFill); RAD(box, 'radius/md');
-      box.appendChild(mkIcon(SVG.file, icol, 20)); bub.appendChild(box);
-      const tx = frame('File text', 'VERTICAL'); bub.appendChild(tx);
-      tx.appendChild(await txt('File name', 'Shortlist_left_backs.pdf', 'Label/Default Strong', tcol));
-      const fs = await txt('File size', '1.2 MB · PDF', 'Label/Small', scol); if (tone === 'brand') fs.opacity = 0.8; tx.appendChild(fs);
-      const dl = mkIcon(SVG.download, tone === 'brand' ? 'color/icon/inverse' : 'color/icon/default', 20); dl.name = 'Download'; bub.appendChild(dl);
+      const col = frame('Text', 'VERTICAL'); GAP(col, 'spacing/2xs'); c.appendChild(col); col.layoutGrow = 1; col.layoutAlign = 'STRETCH';
+      const title = kind === 'Add to contacts' ? 'Connect with Tom to message him' : kind === 'Request pending' ? 'Request pending' : 'You blocked this person';
+      const body = kind === 'Add to contacts' ? 'Tom only accepts messages from contacts. Send a request and write once he accepts.' : kind === 'Request pending' ? 'You can message Tom once he accepts your contact request.' : 'They cannot message you or send contact requests. Unblock to chat again.';
+      col.appendChild(await txt('Title', title, 'Label/Default Strong', 'color/text/primary'));
+      const bd = await txt('Body', body, 'Body/Small', 'color/text/secondary'); col.appendChild(bd); bd.layoutSizingHorizontal = 'FILL'; bd.textAutoResize = 'HEIGHT';
+      if (kind === 'Add to contacts') c.appendChild(await mkBtn('Add to contacts', 'Primary'));
+      if (kind === 'Blocked') c.appendChild(await mkBtn('Unblock', 'Secondary'));
     }
-    const meta = frame('Meta', 'HORIZONTAL'); GAP(meta, 'spacing/2xs'); meta.counterAxisAlignItems = 'CENTER'; col.appendChild(meta);
-    if (failed) {
-      meta.appendChild(await txt('Status', 'Not sent', 'Label/Small', 'color/text/danger'));
-      meta.appendChild(await txt('Retry', 'Retry', 'Label/Small', 'color/text/brand'));
-    } else {
-      meta.appendChild(await txt('Time', '14:35', 'Label/Small', 'color/text/secondary'));
-      if (mine) { const ic = mkIcon(status === 'Read' ? SVG.checks : SVG.check, status === 'Read' ? 'color/icon/brand' : 'color/icon/default', 14); ic.name = 'Status icon'; meta.appendChild(ic); }
-    }
-    comps.push(row);
+    comps.push(c);
   }
-  // grid: columns by Type, rows by Side/Status
-  const typeCol = { Text: 0, Photo: 1, File: 2 }, rowKey = ['Theirs/None', 'Mine/Sent', 'Mine/Read', 'Mine/Failed'];
-  const rowH = [0, 0, 0, 0];
-  comps.forEach(v => { const m = /Side=(\w+), Type=(\w+), Status=(\w+)/.exec(v.name); const ri = rowKey.indexOf(m[1] + '/' + m[3]); if (v.height > rowH[ri]) rowH[ri] = Math.ceil(v.height); });
-  const rowY = []; let yy = 32; for (let i = 0; i < 4; i++) { rowY.push(yy); yy += rowH[i] + 40; }
-  comps.forEach(v => { const m = /Side=(\w+), Type=(\w+), Status=(\w+)/.exec(v.name); v.x = 32 + typeCol[m[2]] * (976 + 40); v.y = rowY[rowKey.indexOf(m[1] + '/' + m[3])]; });
-  const set = figma.combineAsVariants(comps, sec8); set.name = 'Message bubble';
+  let yy = 32; comps.forEach(v => { v.x = 32; v.y = yy; yy += Math.ceil(v.height) + 40; });
+  const set = figma.combineAsVariants(comps, sec8); set.name = 'Composer';
   for (const ch of set.children) { ch.x += 32; ch.y += 32; }
   set.resizeWithoutConstraints(set.width + 64, set.height + 64);
-  report.info.bubble = { count: set.children.length, set: Math.round(set.width) + 'x' + Math.round(set.height), maxWidthSupported: maxWidthOk, sizes: set.children.map(v => v.name.replace(/Side=|Type=|Status=/g, '') + ' ' + Math.round(v.width) + 'x' + Math.round(v.height) + ' bubble ' + (function () { const b = v.findOne(n => n.name === 'Bubble'); return b ? Math.round(b.width) + 'x' + Math.round(b.height) : '?'; })()).join(' | ') };
+  report.info.composer = set.children.map(v => v.name + ' ' + Math.round(v.width) + 'x' + Math.round(v.height)).join(' | ');
 });
 
-// ---------- Date divider ----------
-await step('Date divider', async () => {
-  const c = figma.createComponent(); c.name = 'Date divider'; sec8.appendChild(c);
-  c.resize(976, 40); c.layoutMode = 'HORIZONTAL'; c.primaryAxisSizingMode = 'FIXED'; c.counterAxisSizingMode = 'AUTO'; c.primaryAxisAlignItems = 'CENTER'; c.counterAxisAlignItems = 'CENTER'; c.fills = [];
-  const chip = frame('Chip', 'HORIZONTAL'); fillV(chip, 'color/bg/subtle'); RAD(chip, 'radius/full'); PAD(chip, 'spacing/2xs', 'spacing/sm', 'spacing/2xs', 'spacing/sm'); c.appendChild(chip);
-  chip.appendChild(await txt('Label', 'Today', 'Label/Small', 'color/text/secondary'));
+// ---------- Thread header ----------
+await step('Thread header', async () => {
+  const comps = [];
+  for (const device of ['Desktop', 'Mobile']) {
+    const mob = device === 'Mobile';
+    const c = figma.createComponent(); c.name = 'Device=' + device; sec8.appendChild(c);
+    c.resize(mob ? 390 : 1040, 72); c.layoutMode = 'HORIZONTAL'; c.primaryAxisSizingMode = 'FIXED'; c.counterAxisSizingMode = 'AUTO'; c.counterAxisAlignItems = 'CENTER';
+    PAD(c, 'spacing/md', mob ? 'spacing/sm' : 'spacing/lg', 'spacing/md', mob ? 'spacing/sm' : 'spacing/lg'); GAP(c, mob ? 'spacing/sm' : 'spacing/md'); fillV(c, 'color/bg/surface'); bottomLine(c);
+    if (mob) { const bk = ibVar('Back'); bk.name = 'Back'; c.appendChild(bk); }
+    c.appendChild(photo40());
+    const info = frame('Info', 'VERTICAL'); GAP(info, 'spacing/2xs'); c.appendChild(info); info.layoutGrow = 1; info.layoutAlign = 'STRETCH'; info.primaryAxisAlignItems = 'CENTER';
+    const nr = frame('Name row', 'HORIZONTAL'); GAP(nr, 'spacing/xs'); nr.counterAxisAlignItems = 'CENTER'; info.appendChild(nr);
+    nr.appendChild(await txt('Name', 'Tom Reilly', 'Label/Large Strong', 'color/text/primary'));
+    const bd = badgeSet.children.find(v => v.name === 'Status=Verified').createInstance(); bd.name = 'Verification badge'; nr.appendChild(bd); if (mob) bd.visible = false;
+    const meta = await txt('Meta', 'Manager · Northgate Athletic', 'Label/Small', 'color/text/secondary'); info.appendChild(meta); meta.layoutSizingHorizontal = 'FILL'; meta.textAutoResize = 'HEIGHT'; meta.textTruncation = 'ENDING'; meta.maxLines = 1;
+    const more = ibVar('More'); more.name = 'More'; c.appendChild(more);
+    comps.push(c);
+  }
+  comps[0].x = 32; comps[0].y = 32; comps[1].x = 32; comps[1].y = 32 + Math.ceil(comps[0].height) + 40;
+  const set = figma.combineAsVariants(comps, sec8); set.name = 'Thread header';
+  for (const ch of set.children) { ch.x += 32; ch.y += 32; }
+  set.resizeWithoutConstraints(set.width + 64, set.height + 64);
+  report.info.threadHeader = set.children.map(v => v.name + ' ' + Math.round(v.width) + 'x' + Math.round(v.height)).join(' | ');
 });
 
 // ---------- section layout ----------
