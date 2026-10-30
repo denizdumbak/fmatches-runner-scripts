@@ -1,4 +1,4 @@
-// step 277 · My events: 4 pages per platform (Organising, Applied, Organising empty, Applied empty), Web + Mobile
+// step 278 · My events: the two empty-state pages per platform (retry of 277, Empty card variants are Device=Desktop / Device=Mobile)
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const p01 = figma.root.children.find(p => /^01/.test(p.name));
@@ -117,7 +117,7 @@ async function build(dev, kind, name) {
       const w = await listRow(dev, r, chip, innerW); card.appendChild(w); w.layoutSizingHorizontal = 'FILL';
     }
   } else {
-    const ec = variant(S.empty, new RegExp(desk ? '416' : '358')).createInstance(); ec.name = 'Empty card'; card.appendChild(ec); ec.layoutSizingHorizontal = 'FILL';
+    const ec = variant(S.empty, new RegExp('Device=' + dev)).createInstance(); ec.name = 'Empty card'; card.appendChild(ec); ec.layoutSizingHorizontal = 'FILL';
     const texts = ec.findAll(n => n.type === 'TEXT');
     report.info['emptyTexts' + dev] = texts.map(t => t.name + '="' + t.characters.slice(0, 30) + '"').join(' | ');
     const hasBtn = ec.findAll(n => n.type === 'INSTANCE' && /Button/.test(n.name)).length > 0;
@@ -137,7 +137,7 @@ async function build(dev, kind, name) {
   return pg;
 }
 
-const kinds = [['org', ''], ['applied', ' / Applied'], ['org-empty', ' / No events created'], ['applied-empty', ' / No applications']];
+const kinds = [['org-empty', ' / No events created'], ['applied-empty', ' / No applications']];
 const built = { Web: [], Mobile: [] };
 for (const dev of ['Desktop', 'Mobile']) {
   const plat = dev === 'Desktop' ? 'Web' : 'Mobile'; const platSec = plat === 'Web' ? webSec : mobSec;
@@ -150,14 +150,14 @@ for (const dev of ['Desktop', 'Mobile']) {
 
 await step('place pages and size sections', async () => {
   for (const plat of ['Web', 'Mobile']) {
+    const dev = plat === 'Web' ? 'Desktop' : 'Mobile';
     const platSec = plat === 'Web' ? webSec : mobSec; const ev = platSec.findOne(n => n.type === 'SECTION' && n.name === 'Events');
-    const others = ev.children.filter(c => c.type === 'FRAME' && built[plat].indexOf(c) < 0);
-    const rowY = Math.max.apply(null, others.map(f => f.y + f.height)) + 160; const stepX = plat === 'Web' ? 1920 : 470;
-    built[plat].forEach((pg, i) => { pg.x = 80 + i * stepX; pg.y = rowY; });
-    const maxH = Math.max.apply(null, built[plat].map(p => p.height));
-    ev.resizeWithoutConstraints(ev.width, Math.ceil(rowY + maxH + (plat === 'Web' ? 100 : 80)));
-    const need = Math.ceil(ev.y + ev.height + 120); if (need > platSec.height) platSec.resizeWithoutConstraints(platSec.width, need);
-    report.info['events' + plat] = Math.round(ev.width) + 'x' + Math.round(ev.height) + ', ' + plat + ' ' + Math.round(platSec.width) + 'x' + Math.round(platSec.height) + '; pages ' + built[plat].map(p => p.name.replace('Events / ', '') + ' ' + Math.round(p.width) + 'x' + Math.round(p.height)).join(' | ');
+    const first = ev.children.find(c => c.type === 'FRAME' && c.name === 'Events / My events · ' + dev); if (!first) throw new Error('My events page missing in ' + plat);
+    const stepX = plat === 'Web' ? 1920 : 470;
+    built[plat].forEach((pg, i) => { pg.x = first.x + (i + 2) * stepX; pg.y = first.y; });
+    const rowBottom = Math.max.apply(null, ev.children.filter(c => c.type === 'FRAME' && Math.abs(c.y - first.y) < 2).map(f => f.y + f.height));
+    const needEv = Math.ceil(rowBottom + (plat === 'Web' ? 100 : 80)); if (needEv > ev.height) ev.resizeWithoutConstraints(ev.width, needEv);
+    report.info['events' + plat] = Math.round(ev.width) + 'x' + Math.round(ev.height) + '; new pages ' + built[plat].map(p => p.name.replace('Events / ', '') + ' ' + Math.round(p.width) + 'x' + Math.round(p.height) + ' @' + Math.round(p.x) + ',' + Math.round(p.y)).join(' | ');
   }
 });
 
