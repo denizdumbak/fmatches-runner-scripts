@@ -1,4 +1,4 @@
-// step 278 · My events: the two empty-state pages per platform (retry of 277, Empty card variants are Device=Desktop / Device=Mobile)
+// step 279 · My events empty-state pages, redone: Empty card texts set by layer name (Section heading hidden, Title, Body, button Label)
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const p01 = figma.root.children.find(p => /^01/.test(p.name));
@@ -118,19 +118,17 @@ async function build(dev, kind, name) {
     }
   } else {
     const ec = variant(S.empty, new RegExp('Device=' + dev)).createInstance(); ec.name = 'Empty card'; card.appendChild(ec); ec.layoutSizingHorizontal = 'FILL';
-    const texts = ec.findAll(n => n.type === 'TEXT');
-    report.info['emptyTexts' + dev] = texts.map(t => t.name + '="' + t.characters.slice(0, 30) + '"').join(' | ');
     const hasBtn = ec.findAll(n => n.type === 'INSTANCE' && /Button/.test(n.name)).length > 0;
     const title = applied ? 'No applications yet' : 'No events yet', desc = applied ? 'Events you apply to appear here with their status.' : 'Events you create appear here. Create one to reach scouts, clubs and players.';
-    if (texts.length < 2) throw new Error('Empty card has fewer than 2 texts');
-    await figma.loadFontAsync(texts[0].fontName); texts[0].characters = title; await figma.loadFontAsync(texts[1].fontName); texts[1].characters = desc;
-    if (hasBtn) { const bt = ec.findAll(n => n.type === 'TEXT' && n.name === 'Label')[0]; if (bt) { await figma.loadFontAsync(bt.fontName); bt.characters = applied ? 'Browse events' : 'Create event'; } }
+    const lab = applied ? 'Browse events' : 'Create event';
+    const sh = ec.findOne(n => n.type === 'TEXT' && n.name === 'Section heading'); if (sh) sh.visible = false;
+    await setT(ec, n => n.name === 'Title', title); await setT(ec, n => n.name === 'Body', desc);
+    if (hasBtn) { await setT(ec, n => n.name === 'Label' && n.parent && /Button/.test(n.parent.name), lab); }
     else {
-      const lab = applied ? 'Browse events' : 'Create event';
       const bt = variant(S.button, new RegExp('Style=' + (applied ? 'Secondary' : 'Primary') + ', State=Default')).createInstance(); bt.name = 'Button · ' + lab; try { bt.setProperties({ 'Label#8:0': lab }); } catch (e) {} await setT(bt, n => n.name === 'Label', lab);
-      card.appendChild(bt); bt.layoutPositioning = 'AUTO';
-      card.counterAxisAlignItems = 'CENTER'; GAP(card, 'spacing/md');
+      card.appendChild(bt); card.counterAxisAlignItems = 'CENTER'; GAP(card, 'spacing/md');
     }
+    for (const t of ec.findAll(n => n.type === 'TEXT')) if (!(function (x) { while (x && x !== ec) { if (x.visible === false) return true; x = x.parent; } return false; })(t)) { const tb = t.absoluteBoundingBox, cbx = ec.absoluteBoundingBox; if (tb.x + tb.width > cbx.x + cbx.width + 1) report.info['emptyOverflow' + dev] = (report.info['emptyOverflow' + dev] || '') + t.name + ' '; }
     report.info['emptyHasButton' + dev] = hasBtn;
   }
   pg.appendChild(byName(desk ? homeD : home, 'Footer').clone());
