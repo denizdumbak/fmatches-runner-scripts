@@ -1,38 +1,69 @@
-// step 266 · Message menu sits right under its own bubble (Web + Mobile): top = bubble bottom + 8, flips above when it would hit the composer; right edge = bubble right edge
+// step 267 · read-only inspect for Events phase: reusable components, Web/Mobile section layout, Home upcoming-events and calendar structure
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
-const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync(); await figma.setCurrentPageAsync(p02);
-const R = v => Math.round(v);
-const BB = n => n.absoluteBoundingBox;
-const GAP = 8;
-async function fix(label, pageName) {
-  const pg = p02.findOne(n => n.type === 'FRAME' && n.name === pageName);
-  if (!pg) throw new Error('missing page: ' + pageName);
-  const msgs = pg.findOne(n => n.name === 'Messages');
-  const row = msgs && msgs.children.find(c => c.name === 'Message · Mine · Text');
-  if (!row) throw new Error('own message row not found on ' + pageName);
-  const inner = row.findOne(n => n.name === 'Bubble') || row;
-  const menu = pg.findOne(n => n.type === 'INSTANCE' && n.name === 'Message menu');
-  if (!menu) throw new Error('Message menu not found on ' + pageName);
-  const comp = pg.findOne(n => n.type === 'INSTANCE' && /^Composer/.test(n.name));
-  const P = BB(pg), b = BB(inner), m0 = BB(menu), c = comp ? BB(comp) : { y: P.y + P.height };
-  const before = { gap: R(m0.y - (b.y + b.height)), y: R(m0.y - P.y) };
-  let top = b.y + b.height + GAP, flipped = false;
-  if (top + m0.height > c.y - 8) { top = b.y - GAP - m0.height; flipped = true; }
-  menu.x += (b.x + b.width - m0.width) - m0.x;
-  menu.y += top - m0.y;
-  const a = BB(menu);
-  const gapAfter = flipped ? R(b.y - (a.y + a.height)) : R(a.y - (b.y + b.height));
-  report.info[label] = {
-    usedInner: inner === row ? 'ROW (no Bubble child found)' : 'Bubble',
-    bubble: '(' + R(b.x - P.x) + ',' + R(b.y - P.y) + ' ' + R(b.width) + 'x' + R(b.height) + ')',
-    menuBefore: before.y + ' (gap ' + before.gap + ')',
-    menuAfter: '(' + R(a.x - P.x) + ',' + R(a.y - P.y) + ' ' + R(a.width) + 'x' + R(a.height) + ')',
-    gapAfter, flipped,
-    rightEdgesEqual: R(a.x + a.width) === R(b.x + b.width),
-    insidePage: a.y >= P.y && a.y + a.height <= P.y + P.height && a.x >= P.x && a.x + a.width <= P.x + P.width
-  };
+const pageOf = re => figma.root.children.find(p => re.test(p.name));
+const bb = n => { const b = n.absoluteBoundingBox; return b ? '(' + Math.round(b.x) + ',' + Math.round(b.y) + ' ' + Math.round(b.width) + 'x' + Math.round(b.height) + ')' : '-'; };
+const kidsOf = n => ('children' in n ? n.children : []);
+function tree(n, depth, max, out, pad) {
+  out.push(pad + n.name + ' [' + n.type + '] ' + bb(n) + (n.type === 'INSTANCE' ? '' : ''));
+  if (depth < max) for (const c of kidsOf(n)) tree(c, depth + 1, max, out, pad + '  ');
 }
-await step('Web: Message menu', async () => { await fix('web', 'Messenger / Message menu · Desktop'); });
-await step('Mobile: Message menu', async () => { await fix('mobile', 'Messenger / Message menu · Mobile'); });
+const want = /^(Event row|Calendar day|Tag|Filter chip|Form field|Option list|Date picker|Checkbox|Button|Link row|Key fact|Section header|Map marker|Map card|Avatar|Page notice|Empty card|Role icon|Stat card|Icon button|Silhouette|Club crest)$/;
+
+await step('01 components', async () => {
+  const p = pageOf(/^01/); await p.loadAsync();
+  const out = [];
+  for (const s of p.children) {
+    if (s.type !== 'SECTION') continue;
+    for (const c of s.children) {
+      if ((c.type === 'COMPONENT_SET' || c.type === 'COMPONENT') && want.test(c.name)) {
+        const n = c.type === 'COMPONENT_SET' ? c.children.length : 1;
+        const props = c.type === 'COMPONENT_SET' ? Object.keys(c.componentPropertyDefinitions).join(', ') : '';
+        out.push(s.name + ' > ' + c.name + ' ' + bb(c) + ' variants=' + n + (props ? ' props=[' + props + ']' : ''));
+      }
+    }
+  }
+  report.info.components = out;
+});
+
+await step('02 layout', async () => {
+  const p = pageOf(/^02/); await p.loadAsync();
+  const web = p.findOne(n => n.type === 'SECTION' && n.name === 'Web');
+  const mob = p.findOne(n => n.type === 'SECTION' && n.name === 'Mobile');
+  report.info.web = bb(web);
+  report.info.mobile = bb(mob);
+  report.info.webSections = web.children.map(c => c.name + ' [' + c.type + '] ' + bb(c) + ' kids=' + kidsOf(c).length);
+  report.info.mobileSections = mob.children.map(c => c.name + ' [' + c.type + '] ' + bb(c) + ' kids=' + kidsOf(c).length);
+});
+
+await step('home upcoming events', async () => {
+  const p = pageOf(/^02/); await p.loadAsync();
+  const home = p.findOne(n => n.type === 'FRAME' && n.name === 'Home / Main · Desktop');
+  if (!home) throw new Error('Home / Main · Desktop not found; frames: ' + p.findAll(n => n.type === 'FRAME' && /^Home/.test(n.name)).map(n => n.name).join(' | '));
+  report.info.homeTop = kidsOf(home).map(c => c.name + ' ' + bb(c));
+  const up = home.findOne(n => /upcoming events/i.test(n.name));
+  const out = [];
+  if (up) tree(up, 0, 3, out, ''); else out.push('no node named Upcoming events');
+  report.info.upcoming = out;
+});
+
+await step('calendar view', async () => {
+  const p = pageOf(/^02/); await p.loadAsync();
+  const cal = p.findOne(n => n.type === 'FRAME' && /calendar/i.test(n.name) && /Home/.test(n.name));
+  if (!cal) throw new Error('calendar frame not found');
+  const out = [];
+  tree(cal, 0, 1, out, '');
+  report.info.calendarFrame = out;
+});
+
+await step('event row instance', async () => {
+  const p = pageOf(/^02/); await p.loadAsync();
+  const row = p.findOne(n => n.type === 'INSTANCE' && /^Event row/.test(n.name));
+  if (!row) throw new Error('no Event row instance');
+  const out = [];
+  tree(row, 0, 3, out, '');
+  report.info.eventRow = out;
+  report.info.eventRowProps = Object.keys(row.componentProperties).join(', ');
+});
+
 return report;
