@@ -1,5 +1,5 @@
-// step 307 · mobil dokunma alanı 44 px: (1) Social icon kökü 44 (görünen daire 32, içte "Disc"), Social links aralığı 8 -> 0 · (2) Icon button 40'lık varyantlar 44 · (3) Filter chip yüksekliği 40 -> 44 · (4) Switch: tüm satır tıklanır notu · yerleşim ve taşma kontrolü
-const report = { done: [], errors: [], fixes: [], moved: [] };
+// step 308 · hover: Icon button, Filter chip, Role card (yeni State özelliği), Calendar day, Map marker için State=Hover varyantı + ON_HOVER CHANGE_TO 0.15 · 02'de kendi tıklama bağlantısı olan instance'lara da hover eklenir · yerleşim kontrolü
+const report = { done: [], errors: [], sets: [], fixes: [], moved: [] };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const R = n => Math.round(n);
 const p01 = figma.root.children.find(p => /^01/.test(p.name));
@@ -9,104 +9,101 @@ await figma.setCurrentPageAsync(p01);
 const vars = await figma.variables.getLocalVariablesAsync();
 const V = name => { const v = vars.find(x => x.name === name); if (!v) throw new Error('variable missing: ' + name); return v; };
 function resolve(v, d) { const val = v.valuesByMode[Object.keys(v.valuesByMode)[0]]; if (val && val.type === 'VARIABLE_ALIAS' && (d || 0) < 6) { const t = vars.find(x => x.id === val.id); return t ? resolve(t, (d || 0) + 1) : null; } return val; }
+const BP = name => { const v = V(name); const c = resolve(v); return figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: c.r, g: c.g, b: c.b } }, 'color', v); };
+const boundName = p => { if (!p || !p.boundVariables || !p.boundVariables.color) return null; const v = vars.find(x => x.id === p.boundVariables.color.id); return v ? v.name : null; };
 const BB = n => n.absoluteBoundingBox;
 const getSet = nm => { const s = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === nm); if (!s) throw new Error('set yok: ' + nm); return s; };
 const blockOf = s => { let x = s; while (x.parent && x.parent.type !== 'SECTION') x = x.parent; return x; };
 const before = new Map();
 function remember(s) { const b = blockOf(s); if (!before.has(b.id)) before.set(b.id, { node: b, box: Object.assign({}, BB(b)) }); }
-const inInstance = n => { let x = n.parent; while (x && x.type !== 'PAGE') { if (x.type === 'INSTANCE') return true; x = x.parent; } return false; };
-function fitSet(s) {
-  if (s.layoutMode && s.layoutMode !== 'NONE') { s.primaryAxisSizingMode = 'AUTO'; s.counterAxisSizingMode = 'AUTO'; return; }
-  let r = 0, b = 0; for (const c of s.children) { r = Math.max(r, c.x + c.width); b = Math.max(b, c.y + c.height); }
-  s.resizeWithoutConstraints(R(r + 24), R(b + 24));
+const hoverReact = dest => ({ trigger: { type: 'ON_HOVER' }, actions: [{ type: 'NODE', destinationId: dest.id, navigation: 'CHANGE_TO', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.15 }, preserveScrollPosition: false, resetVideoPosition: false }] });
+const pairs = []; // [default, hover]
+
+async function makeHover(s, srcRe, nameFrom, styleFn) {
+  remember(s);
+  for (const c of s.children.filter(c => /State=Hover/.test(c.name))) c.remove();
+  const srcs = s.children.filter(c => srcRe.test(c.name));
+  for (const src of srcs) {
+    const cl = src.clone(); s.appendChild(cl); cl.name = nameFrom(src.name);
+    await cl.setReactionsAsync([]);
+    const ring = cl.findOne(n => n.name === 'Focus ring'); if (ring) ring.remove();
+    if (s.layoutMode === 'NONE') {
+      const row = s.children.filter(c => c !== cl && c.y < src.y + src.height && c.y + c.height > src.y);
+      cl.x = Math.max.apply(null, row.map(c => c.x + c.width)) + 40; cl.y = src.y;
+    }
+    await styleFn(cl, src);
+    const keep = (src.reactions || []).filter(r => !(r.trigger && r.trigger.type === 'ON_HOVER'));
+    await src.setReactionsAsync(keep.concat([hoverReact(cl)]));
+    pairs.push([src, cl]);
+  }
+  if (s.layoutMode && s.layoutMode !== 'NONE') { s.primaryAxisSizingMode = 'AUTO'; s.counterAxisSizingMode = 'AUTO'; }
+  else { let r = 0, b = 0; for (const c of s.children) { r = Math.max(r, c.x + c.width); b = Math.max(b, c.y + c.height); } s.resizeWithoutConstraints(R(r + 24), R(b + 24)); }
+  report.sets.push(`${s.name}: +${srcs.length} Hover · toplam ${s.children.length} varyant`);
+}
+function recolorIcons(node, from, to) {
+  let n = 0;
+  for (const v of node.findAll(x => x.type === 'VECTOR' || x.type === 'BOOLEAN_OPERATION' || x.type === 'ELLIPSE' || x.type === 'RECTANGLE' || x.type === 'LINE')) {
+    if (v.strokes && v.strokes.length && boundName(v.strokes[0]) === from) { v.strokes = [BP(to)]; n++; }
+    if (v.fills && v.fills !== figma.mixed && v.fills.length && boundName(v.fills[0]) === from) { v.fills = [BP(to)]; n++; }
+  }
+  return n;
 }
 
-// (1) Social icon
-await step('1 Social icon 44', async () => {
-  const s = getSet('Social icon'); remember(s);
-  let done = 0;
-  for (const c of s.children) {
-    if (c.findOne(n => n.name === 'Disc')) { done++; continue; }
-    const disc = figma.createFrame();
-    disc.name = 'Disc';
-    disc.fills = JSON.parse(JSON.stringify(c.fills));
-    disc.layoutMode = 'HORIZONTAL'; disc.primaryAxisAlignItems = 'CENTER'; disc.counterAxisAlignItems = 'CENTER';
-    disc.primaryAxisSizingMode = 'FIXED'; disc.counterAxisSizingMode = 'FIXED';
-    disc.resize(32, 32); disc.cornerRadius = 999;
-    for (const k of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) disc.setBoundVariable(k, V('radius/full'));
-    disc.clipsContent = false;
-    const glyph = c.findOne(n => n.name === 'Glyph');
-    c.insertChild(0, disc);
-    if (glyph) disc.appendChild(glyph);
-    c.fills = [];
-    c.primaryAxisAlignItems = 'CENTER'; c.counterAxisAlignItems = 'CENTER';
-    c.resize(44, 44);
-    done++;
+await step('1 Icon button', async () => {
+  const s = getSet('Icon button'); const log = [];
+  await makeHover(s, /State=Default/, n => n.replace('State=Default', 'State=Hover'), async (c) => {
+    const f = c.fills.length ? boundName(c.fills[0]) : null;
+    let to;
+    if (f === 'color/bg/brand') to = 'color/bg/brand-hover';
+    else if (f === 'color/bg/subtle') { to = 'color/bg/brand-subtle'; recolorIcons(c, 'color/icon/default', 'color/icon/brand'); }
+    else { to = 'color/bg/subtle'; }
+    c.fills = [BP(to)];
+    log.push(`${c.name.replace(', State=Hover', '')}: ${f ? f.replace('color/', '') : 'yok'} -> ${to.replace('color/', '')}`);
+  });
+  report.iconButtonHover = log;
+});
+await step('2 Filter chip', async () => {
+  await makeHover(getSet('Filter chip'), /^State=Default$/, () => 'State=Hover', async c => { c.strokes = [BP('color/border/strong')]; });
+});
+await step('3 Role card', async () => {
+  const s = getSet('Role card');
+  for (const c of s.children) if (!/State=/.test(c.name)) c.name = c.name + ', State=Default';
+  await makeHover(s, /State=Default/, n => n.replace('State=Default', 'State=Hover'), async c => {
+    const t = c.findOne(n => n.name === 'Title' && n.type === 'TEXT'); if (t) t.fills = [BP('color/text/brand')];
+  });
+});
+await step('4 Calendar day', async () => {
+  await makeHover(getSet('Calendar day'), /State=Default/, n => n.replace('State=Default', 'State=Hover'), async c => { c.fills = [BP('color/bg/subtle')]; });
+});
+await step('5 Map marker', async () => {
+  const fx = (await figma.getLocalEffectStylesAsync()).find(e => e.name === 'Shadow/Raised'); if (!fx) throw new Error('Shadow/Raised yok');
+  await makeHover(getSet('Map marker'), /State=Default/, n => n.replace('State=Default', 'State=Hover'), async c => { await c.setEffectStyleIdAsync(fx.id); });
+});
+
+// 02: kendi bağlantısı olan instance'lara hover ekle
+await step('6 instance hover', async () => {
+  const map = new Map(pairs.map(([d, h]) => [d.id, h]));
+  let added = 0, inherited = 0, total = 0;
+  for (const inst of p02.findAll(n => n.type === 'INSTANCE')) {
+    const m = await inst.getMainComponentAsync(); if (!m || !map.has(m.id)) continue;
+    total++;
+    const rs = inst.reactions || [];
+    if (rs.some(r => r.trigger && r.trigger.type === 'ON_HOVER')) { inherited++; continue; }
+    await inst.setReactionsAsync(rs.concat([hoverReact(map.get(m.id))]));
+    added++;
   }
-  fitSet(s);
-  report.fixes.push(`1 Social icon: ${done} varyant 44x44, görünen daire 32 (Disc)`);
-  // Social links aralığı 0
-  let rows = 0; const widths = new Set();
-  for (const page of [p01, p02]) for (const row of page.findAll(n => n.type === 'FRAME' && n.name === 'Social links')) {
-    if (inInstance(row)) continue;
-    if (row.boundVariables && row.boundVariables.itemSpacing) row.setBoundVariable('itemSpacing', null);
-    row.itemSpacing = 0; rows++; widths.add(R(row.width) + 'x' + R(row.height));
-  }
-  report.fixes.push(`1 Social links düzenlenen satır ${rows} (instance dışı) · boyutlar ${[...widths].join(', ')}`);
+  report.fixes.push(`6 02'de instance ${total}: hover zaten var ${inherited}, eklenen ${added}`);
 });
 
-// (2) Icon button 40 -> 44
-await step('2 Icon button 44', async () => {
-  const s = getSet('Icon button'); remember(s);
-  const out = [];
-  for (const c of s.children) {
-    if (R(c.width) !== 40) continue;
-    const badge = c.findOne(n => n.name === 'Badge');
-    let br = null, bt = null; if (badge) { br = c.width - (badge.x + badge.width); bt = badge.y; }
-    c.resize(44, 44);
-    if (badge && badge.layoutPositioning === 'ABSOLUTE') { badge.x = c.width - badge.width - br; badge.y = bt; }
-    out.push(c.name.replace(', State=', '/'));
-  }
-  fitSet(s);
-  report.fixes.push(`2 Icon button 40 -> 44: ${out.length} varyant`);
-});
-
-// (3) Filter chip 44
-await step('3 Filter chip 44', async () => {
-  const s = getSet('Filter chip'); remember(s);
-  for (const c of s.children) { c.resize(c.width, 44); c.primaryAxisSizingMode = 'AUTO'; c.counterAxisSizingMode = 'FIXED'; }
-  fitSet(s);
-  report.fixes.push('3 Filter chip: ' + s.children.map(c => `${c.name} ${R(c.width)}x${R(c.height)}`).join(' · '));
-});
-
-// (4) Switch notu
-await step('4 Switch notu', async () => {
-  const s = getSet('Switch'); const sec = blockOf(s).parent;
-  const old = sec.findOne(n => n.name === 'Note · Switch tap area'); if (old) old.remove();
-  const styles = await figma.getLocalTextStylesAsync(); const st = styles.find(x => x.name === 'Label/Small');
-  await figma.loadFontAsync(st.fontName);
-  const t = figma.createText(); t.name = 'Note · Switch tap area';
-  await t.setTextStyleIdAsync(st.id);
-  t.characters = 'For the developer · Tap area. The whole setting row toggles the switch, so the touch target is the full row (at least 44 px high), not only the 44 x 24 track.';
-  const wv = V('color/text/warning'); const wc = resolve(wv);
-  t.fills = [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: wc.r, g: wc.g, b: wc.b } }, 'color', wv)];
-  sec.appendChild(t); t.textAutoResize = 'HEIGHT'; t.resize(520, t.height);
-  const b = blockOf(s); t.x = b.x; t.y = b.y + b.height + 16;
-  // altındakileri it
-  const dy = t.height + 16;
-  for (const k of sec.children) { if (k === t || k === b) continue; if (k.y >= b.y + b.height - 1 && k.x < b.x + Math.max(b.width, 520) && k.x + k.width > b.x) { k.y += dy; report.moved.push(`${sec.name} › ${k.name} +${R(dy)}`); } }
-  report.fixes.push(`4 not ${sec.name} @${R(t.x)},${R(t.y)}`);
-});
-
-// yerleşim: büyüyen bloklar
-await step('5 yerleşim 01', async () => {
+// yerleşim
+await step('7 yerleşim', async () => {
   for (const { node: b, box: o } of before.values()) {
     const nb = BB(b); const dy = (nb.y + nb.height) - (o.y + o.height); const dx = (nb.x + nb.width) - (o.x + o.width);
     const sec = b.parent;
-    if (dy > 0) for (const k of sec.children) {
+    for (const k of sec.children) {
       if (k === b) continue; const kb = BB(k); if (!kb) continue;
-      const xHit = kb.x < o.x + o.width + Math.max(dx, 0) && kb.x + kb.width > o.x;
-      if (xHit && kb.y >= o.y + o.height - 1) { k.y += dy; report.moved.push(`${sec.name} › ${k.name} +${R(dy)}`); }
+      if (dy > 0 && kb.x < o.x + o.width + Math.max(dx, 0) && kb.x + kb.width > o.x && kb.y >= o.y + o.height - 1) { k.y += dy; report.moved.push(`${sec.name} › ${k.name} +${R(dy)}`); }
+      else if (dx > 0 && kb.y < o.y + o.height && kb.y + kb.height > o.y && kb.x >= o.x + o.width - 1) { k.x += dx; report.moved.push(`${sec.name} › ${k.name} x+${R(dx)}`); }
     }
   }
   const secs = p01.children.filter(n => n.type === 'SECTION');
@@ -115,26 +112,18 @@ await step('5 yerleşim 01', async () => {
   for (let i = 1; i < secs.length; i++) { const want = secs[i - 1].x + secs[i - 1].width + 160; if (secs[i].x < want) secs[i].x = want; }
   const inter = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
   const out = [];
-  for (const sec of new Set([...before.values()].map(x => x.node.parent))) { const k = sec.children; for (let i = 0; i < k.length; i++) for (let j = i + 1; j < k.length; j++) { const a = BB(k[i]), c = BB(k[j]); if (a && c && inter(a, c)) out.push(`${sec.name}: ${k[i].name} x ${k[j].name}`); } }
+  for (const sec of secs) { const k = sec.children; for (let i = 0; i < k.length; i++) for (let j = i + 1; j < k.length; j++) { const a = BB(k[i]), c = BB(k[j]); if (a && c && inter(a, c)) out.push(`${sec.name}: ${k[i].name} x ${k[j].name}`); } }
   report.overlaps01 = out.length ? out.slice(0, 12) : 'none';
+  const so = []; for (let i = 0; i < secs.length; i++) for (let j = i + 1; j < secs.length; j++) if (inter(BB(secs[i]), BB(secs[j]))) so.push(secs[i].name + ' x ' + secs[j].name);
+  report.sectionOverlaps = so.length ? so : 'none';
 });
 
-// 02 kontrolü: büyüyen satırlar ebeveyninden taşıyor mu
-await step('6 kontrol 02', async () => {
-  const over = new Map();
-  const rightOver = (n, p) => R(BB(n).x + BB(n).width - (BB(p).x + BB(p).width));
-  for (const plat of p02.children.filter(n => n.type === 'SECTION')) for (const sec of plat.children.filter(n => n.type === 'SECTION')) for (const scr of sec.children.filter(n => n.type === 'FRAME' && !/^Flow ·/.test(n.name))) {
-    for (const n of scr.findAll(n => n.name === 'Header actions' || n.name === 'Social links' || n.name === 'Tabs' || n.name === 'Thread header' || n.name === 'Composer' || n.name === 'Filters')) {
-      if (n.visible === false || !BB(n)) continue;
-      const o1 = rightOver(n, n.parent), o2 = rightOver(n, scr);
-      if (o1 > 0 || o2 > 0) { const k = `${plat.name} › ${n.name} in ${n.parent.name} (+${Math.max(o1, o2)})`; const g = over.get(k) || { n: 0, ex: scr.name }; g.n++; over.set(k, g); }
-    }
-  }
-  report.overflow02 = over.size ? [...over.entries()].map(([k, g]) => `${g.n}x ${k} · ${g.ex}`).slice(0, 15) : 'none';
-  // örnek ölçüler
-  const m = p02.findOne(n => n.type === 'FRAME' && n.name === 'Messenger / Thread · Mobile') || p02.findOne(n => n.type === 'FRAME' && /Messenger .*· Mobile/.test(n.name));
-  const ha = p02.findOne(n => n.name === 'Header actions' && R(n.width) > 150);
-  const sl = p02.findOne(n => n.name === 'Social links');
-  report.samples = `Header actions ${ha ? R(ha.width) + 'x' + R(ha.height) : '-'} · Social links ${sl ? R(sl.width) + 'x' + R(sl.height) : '-'}`;
+// kontrol
+await step('8 kontrol', async () => {
+  let broken = 0, links = 0;
+  for (const n of p02.findAll(n => n.reactions && n.reactions.length)) for (const r of n.reactions) for (const a of (r.actions || [])) if (a && a.type === 'NODE') { links++; if (!a.destinationId || !(await figma.getNodeByIdAsync(a.destinationId))) broken++; }
+  report.prototype = `02 bağlantı ${links}, kırık ${broken}`;
+  const ib = getSet('Icon button'); const g = ib.variantGroupProperties;
+  report.iconButtonProps = Object.keys(g).map(k => `${k}: ${g[k].values.join('/')}`);
 });
 return report;
