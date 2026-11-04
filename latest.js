@@ -1,73 +1,140 @@
-// step 306 · salt okunur: (A) mobil dokunma alanı: Social icon, Icon button (40), Switch, sekme çipleri ve ebeveynleri · (B) hover eksik setler: Icon button, Filter chip, Role card, Calendar day, Map marker yapısı + mevcut hover kalıpları. Hiçbir şey değiştirmez.
-const report = { done: [], errors: [] };
+// step 307 · mobil dokunma alanı 44 px: (1) Social icon kökü 44 (görünen daire 32, içte "Disc"), Social links aralığı 8 -> 0 · (2) Icon button 40'lık varyantlar 44 · (3) Filter chip yüksekliği 40 -> 44 · (4) Switch: tüm satır tıklanır notu · yerleşim ve taşma kontrolü
+const report = { done: [], errors: [], fixes: [], moved: [] };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const R = n => Math.round(n);
 const p01 = figma.root.children.find(p => /^01/.test(p.name));
 const p02 = figma.root.children.find(p => /^02/.test(p.name));
 await p01.loadAsync(); await p02.loadAsync();
+await figma.setCurrentPageAsync(p01);
 const vars = await figma.variables.getLocalVariablesAsync();
-const vn = id => { const v = vars.find(x => x.id === id); return v ? v.name.replace('color/', '') : '?'; };
-const paint = n => { if (!('fills' in n) || n.fills === figma.mixed || !n.fills.length) return '-'; const p = n.fills[0]; return (p.boundVariables && p.boundVariables.color ? vn(p.boundVariables.color.id) : p.type) + (p.opacity !== undefined && p.opacity < 1 ? '@' + Math.round(p.opacity * 100) : ''); };
-const stroke = n => { if (!('strokes' in n) || !n.strokes.length) return '-'; const p = n.strokes[0]; return (p.boundVariables && p.boundVariables.color ? vn(p.boundVariables.color.id) : 'raw') + ' ' + (n.strokeWeight === figma.mixed ? 'mixed' : n.strokeWeight); };
-const lay = n => n.layoutMode && n.layoutMode !== 'NONE' ? `${n.layoutMode} gap ${n.itemSpacing} pad ${n.paddingTop}/${n.paddingRight}/${n.paddingBottom}/${n.paddingLeft} ${n.primaryAxisSizingMode}/${n.counterAxisSizingMode}` : 'NONE';
-const desc = n => `${n.name} ${R(n.width)}x${R(n.height)} · ${lay(n)} · fill ${paint(n)} · stroke ${stroke(n)} · rad ${'cornerRadius' in n ? (n.cornerRadius === figma.mixed ? 'mixed' : R(n.cornerRadius)) : '-'} · op ${n.opacity}`;
-const kids = n => 'children' in n ? n.children.map(k => `${k.name}:${k.type} ${R(k.width)}x${R(k.height)}${k.layoutPositioning === 'ABSOLUTE' ? ' ABS' : ''}`).join(', ') : '';
-const getSet = nm => p01.findOne(n => (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') && n.name === nm);
-const reacts = n => (n.reactions || []).map(r => `${r.trigger.type}>${(r.actions || []).map(a => a.navigation + (a.transition ? ' ' + a.transition.type + ' ' + Math.round(a.transition.duration * 100) / 100 : '')).join('/')}`).join(' ; ') || '-';
-
-function setInfo(nm, max) {
-  const s = getSet(nm); if (!s) return nm + ': YOK';
-  const out = { set: `${s.type} ${R(s.width)}x${R(s.height)} parent ${s.parent.name}`, props: s.variantGroupProperties ? Object.keys(s.variantGroupProperties).map(k => k + ': ' + s.variantGroupProperties[k].values.join('/')) : [], variants: [] };
-  const list = s.type === 'COMPONENT_SET' ? s.children : [s];
-  for (const c of list.slice(0, max || 6)) out.variants.push(`${desc(c)} · kids [${kids(c)}] · reactions ${reacts(c)}`);
-  return out;
+const V = name => { const v = vars.find(x => x.name === name); if (!v) throw new Error('variable missing: ' + name); return v; };
+function resolve(v, d) { const val = v.valuesByMode[Object.keys(v.valuesByMode)[0]]; if (val && val.type === 'VARIABLE_ALIAS' && (d || 0) < 6) { const t = vars.find(x => x.id === val.id); return t ? resolve(t, (d || 0) + 1) : null; } return val; }
+const BB = n => n.absoluteBoundingBox;
+const getSet = nm => { const s = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === nm); if (!s) throw new Error('set yok: ' + nm); return s; };
+const blockOf = s => { let x = s; while (x.parent && x.parent.type !== 'SECTION') x = x.parent; return x; };
+const before = new Map();
+function remember(s) { const b = blockOf(s); if (!before.has(b.id)) before.set(b.id, { node: b, box: Object.assign({}, BB(b)) }); }
+const inInstance = n => { let x = n.parent; while (x && x.type !== 'PAGE') { if (x.type === 'INSTANCE') return true; x = x.parent; } return false; };
+function fitSet(s) {
+  if (s.layoutMode && s.layoutMode !== 'NONE') { s.primaryAxisSizingMode = 'AUTO'; s.counterAxisSizingMode = 'AUTO'; return; }
+  let r = 0, b = 0; for (const c of s.children) { r = Math.max(r, c.x + c.width); b = Math.max(b, c.y + c.height); }
+  s.resizeWithoutConstraints(R(r + 24), R(b + 24));
 }
-async function parentsOf(setName, plat, filterFn, limit) {
-  const s = getSet(setName); const groups = new Map();
-  const plats = p02.children.filter(n => n.type === 'SECTION' && n.name === plat);
-  for (const pl of plats) for (const inst of pl.findAll(n => n.type === 'INSTANCE')) {
-    if (filterFn && !filterFn(inst)) continue;
-    const m = await inst.getMainComponentAsync(); if (!m) continue;
-    const owner = m.parent && m.parent.type === 'COMPONENT_SET' ? m.parent : m;
-    if (owner !== s) continue;
-    const p = inst.parent;
-    const k = `${m.name} ${R(inst.width)}x${R(inst.height)} in "${p.name}" [${lay(p)}] (${R(p.width)}x${R(p.height)})`;
-    const g = groups.get(k) || { n: 0 }; g.n++; groups.set(k, g);
+
+// (1) Social icon
+await step('1 Social icon 44', async () => {
+  const s = getSet('Social icon'); remember(s);
+  let done = 0;
+  for (const c of s.children) {
+    if (c.findOne(n => n.name === 'Disc')) { done++; continue; }
+    const disc = figma.createFrame();
+    disc.name = 'Disc';
+    disc.fills = JSON.parse(JSON.stringify(c.fills));
+    disc.layoutMode = 'HORIZONTAL'; disc.primaryAxisAlignItems = 'CENTER'; disc.counterAxisAlignItems = 'CENTER';
+    disc.primaryAxisSizingMode = 'FIXED'; disc.counterAxisSizingMode = 'FIXED';
+    disc.resize(32, 32); disc.cornerRadius = 999;
+    for (const k of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) disc.setBoundVariable(k, V('radius/full'));
+    disc.clipsContent = false;
+    const glyph = c.findOne(n => n.name === 'Glyph');
+    c.insertChild(0, disc);
+    if (glyph) disc.appendChild(glyph);
+    c.fills = [];
+    c.primaryAxisAlignItems = 'CENTER'; c.counterAxisAlignItems = 'CENTER';
+    c.resize(44, 44);
+    done++;
   }
-  return [...groups.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, limit || 8).map(([k, g]) => `${g.n}x ${k}`);
-}
-
-await step('A tap', async () => {
-  report.socialIcon = setInfo('Social icon');
-  report.socialParentsMobile = await parentsOf('Social icon', 'Mobile');
-  report.socialParentsWeb = await parentsOf('Social icon', 'Web', null, 4);
-  report.iconButton40Mobile = await parentsOf('Icon button', 'Mobile', n => R(n.width) < 44, 10);
-  report.switchParentsMobile = await parentsOf('Switch', 'Mobile');
-  report.chipParentsMobile = await parentsOf('Filter chip', 'Mobile', n => /^Tab ·/.test(n.name));
-  report.iconButtonSizes = getSet('Icon button').children.filter(c => /State=Default/.test(c.name)).map(c => `${c.name.replace(', State=Default', '')} ${R(c.width)} fill ${paint(c)} stroke ${stroke(c)}`);
+  fitSet(s);
+  report.fixes.push(`1 Social icon: ${done} varyant 44x44, görünen daire 32 (Disc)`);
+  // Social links aralığı 0
+  let rows = 0; const widths = new Set();
+  for (const page of [p01, p02]) for (const row of page.findAll(n => n.type === 'FRAME' && n.name === 'Social links')) {
+    if (inInstance(row)) continue;
+    if (row.boundVariables && row.boundVariables.itemSpacing) row.setBoundVariable('itemSpacing', null);
+    row.itemSpacing = 0; rows++; widths.add(R(row.width) + 'x' + R(row.height));
+  }
+  report.fixes.push(`1 Social links düzenlenen satır ${rows} (instance dışı) · boyutlar ${[...widths].join(', ')}`);
 });
 
-await step('B hover', async () => {
-  report.filterChip = setInfo('Filter chip');
-  report.roleCard = setInfo('Role card', 4);
-  report.calendarDay = setInfo('Calendar day', 5);
-  report.mapMarker = setInfo('Map marker', 6);
-  // mevcut hover kalıpları: Default vs Hover farkı
-  const pats = [];
-  for (const nm of ['Button', 'Link row', 'Menu row', 'Event row', 'Chat list item', 'Person row', 'Edit button', 'Option row', 'Social icon', 'Club entry']) {
-    const s = getSet(nm); if (!s || s.type !== 'COMPONENT_SET') continue;
-    const d = s.children.find(c => /State=Default/.test(c.name)); if (!d) continue;
-    const h = s.children.find(c => c.name === d.name.replace('State=Default', 'State=Hover')); if (!h) continue;
-    const diffs = [];
-    const walk = (a, b, path) => {
-      if (paint(a) !== paint(b)) diffs.push(`${path || 'root'} fill ${paint(a)}→${paint(b)}`);
-      if (stroke(a) !== stroke(b)) diffs.push(`${path || 'root'} stroke ${stroke(a)}→${stroke(b)}`);
-      if ('effects' in a && a.effects.length !== b.effects.length) diffs.push(`${path || 'root'} fx ${a.effects.length}→${b.effects.length}`);
-      if ('children' in a && 'children' in b) for (let i = 0; i < Math.min(a.children.length, b.children.length); i++) walk(a.children[i], b.children[i], (path ? path + '>' : '') + a.children[i].name);
-    };
-    walk(d, h, '');
-    pats.push(`${nm}: ${diffs.slice(0, 4).join(' · ') || 'fark yok'} · Default reactions ${reacts(d)}`);
+// (2) Icon button 40 -> 44
+await step('2 Icon button 44', async () => {
+  const s = getSet('Icon button'); remember(s);
+  const out = [];
+  for (const c of s.children) {
+    if (R(c.width) !== 40) continue;
+    const badge = c.findOne(n => n.name === 'Badge');
+    let br = null, bt = null; if (badge) { br = c.width - (badge.x + badge.width); bt = badge.y; }
+    c.resize(44, 44);
+    if (badge && badge.layoutPositioning === 'ABSOLUTE') { badge.x = c.width - badge.width - br; badge.y = bt; }
+    out.push(c.name.replace(', State=', '/'));
   }
-  report.hoverPatterns = pats;
+  fitSet(s);
+  report.fixes.push(`2 Icon button 40 -> 44: ${out.length} varyant`);
+});
+
+// (3) Filter chip 44
+await step('3 Filter chip 44', async () => {
+  const s = getSet('Filter chip'); remember(s);
+  for (const c of s.children) { c.resize(c.width, 44); c.primaryAxisSizingMode = 'AUTO'; c.counterAxisSizingMode = 'FIXED'; }
+  fitSet(s);
+  report.fixes.push('3 Filter chip: ' + s.children.map(c => `${c.name} ${R(c.width)}x${R(c.height)}`).join(' · '));
+});
+
+// (4) Switch notu
+await step('4 Switch notu', async () => {
+  const s = getSet('Switch'); const sec = blockOf(s).parent;
+  const old = sec.findOne(n => n.name === 'Note · Switch tap area'); if (old) old.remove();
+  const styles = await figma.getLocalTextStylesAsync(); const st = styles.find(x => x.name === 'Label/Small');
+  await figma.loadFontAsync(st.fontName);
+  const t = figma.createText(); t.name = 'Note · Switch tap area';
+  await t.setTextStyleIdAsync(st.id);
+  t.characters = 'For the developer · Tap area. The whole setting row toggles the switch, so the touch target is the full row (at least 44 px high), not only the 44 x 24 track.';
+  const wv = V('color/text/warning'); const wc = resolve(wv);
+  t.fills = [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: wc.r, g: wc.g, b: wc.b } }, 'color', wv)];
+  sec.appendChild(t); t.textAutoResize = 'HEIGHT'; t.resize(520, t.height);
+  const b = blockOf(s); t.x = b.x; t.y = b.y + b.height + 16;
+  // altındakileri it
+  const dy = t.height + 16;
+  for (const k of sec.children) { if (k === t || k === b) continue; if (k.y >= b.y + b.height - 1 && k.x < b.x + Math.max(b.width, 520) && k.x + k.width > b.x) { k.y += dy; report.moved.push(`${sec.name} › ${k.name} +${R(dy)}`); } }
+  report.fixes.push(`4 not ${sec.name} @${R(t.x)},${R(t.y)}`);
+});
+
+// yerleşim: büyüyen bloklar
+await step('5 yerleşim 01', async () => {
+  for (const { node: b, box: o } of before.values()) {
+    const nb = BB(b); const dy = (nb.y + nb.height) - (o.y + o.height); const dx = (nb.x + nb.width) - (o.x + o.width);
+    const sec = b.parent;
+    if (dy > 0) for (const k of sec.children) {
+      if (k === b) continue; const kb = BB(k); if (!kb) continue;
+      const xHit = kb.x < o.x + o.width + Math.max(dx, 0) && kb.x + kb.width > o.x;
+      if (xHit && kb.y >= o.y + o.height - 1) { k.y += dy; report.moved.push(`${sec.name} › ${k.name} +${R(dy)}`); }
+    }
+  }
+  const secs = p01.children.filter(n => n.type === 'SECTION');
+  for (const sec of secs) { let r = 0, bt = 0; for (const k of sec.children) { r = Math.max(r, k.x + k.width); bt = Math.max(bt, k.y + k.height); } if (r + 80 > sec.width || bt + 80 > sec.height) sec.resizeWithoutConstraints(Math.max(sec.width, R(r + 80)), Math.max(sec.height, R(bt + 80))); }
+  secs.sort((a, b) => a.x - b.x);
+  for (let i = 1; i < secs.length; i++) { const want = secs[i - 1].x + secs[i - 1].width + 160; if (secs[i].x < want) secs[i].x = want; }
+  const inter = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  const out = [];
+  for (const sec of new Set([...before.values()].map(x => x.node.parent))) { const k = sec.children; for (let i = 0; i < k.length; i++) for (let j = i + 1; j < k.length; j++) { const a = BB(k[i]), c = BB(k[j]); if (a && c && inter(a, c)) out.push(`${sec.name}: ${k[i].name} x ${k[j].name}`); } }
+  report.overlaps01 = out.length ? out.slice(0, 12) : 'none';
+});
+
+// 02 kontrolü: büyüyen satırlar ebeveyninden taşıyor mu
+await step('6 kontrol 02', async () => {
+  const over = new Map();
+  const rightOver = (n, p) => R(BB(n).x + BB(n).width - (BB(p).x + BB(p).width));
+  for (const plat of p02.children.filter(n => n.type === 'SECTION')) for (const sec of plat.children.filter(n => n.type === 'SECTION')) for (const scr of sec.children.filter(n => n.type === 'FRAME' && !/^Flow ·/.test(n.name))) {
+    for (const n of scr.findAll(n => n.name === 'Header actions' || n.name === 'Social links' || n.name === 'Tabs' || n.name === 'Thread header' || n.name === 'Composer' || n.name === 'Filters')) {
+      if (n.visible === false || !BB(n)) continue;
+      const o1 = rightOver(n, n.parent), o2 = rightOver(n, scr);
+      if (o1 > 0 || o2 > 0) { const k = `${plat.name} › ${n.name} in ${n.parent.name} (+${Math.max(o1, o2)})`; const g = over.get(k) || { n: 0, ex: scr.name }; g.n++; over.set(k, g); }
+    }
+  }
+  report.overflow02 = over.size ? [...over.entries()].map(([k, g]) => `${g.n}x ${k} · ${g.ex}`).slice(0, 15) : 'none';
+  // örnek ölçüler
+  const m = p02.findOne(n => n.type === 'FRAME' && n.name === 'Messenger / Thread · Mobile') || p02.findOne(n => n.type === 'FRAME' && /Messenger .*· Mobile/.test(n.name));
+  const ha = p02.findOne(n => n.name === 'Header actions' && R(n.width) > 150);
+  const sl = p02.findOne(n => n.name === 'Social links');
+  report.samples = `Header actions ${ha ? R(ha.width) + 'x' + R(ha.height) : '-'} · Social links ${sl ? R(sl.width) + 'x' + R(sl.height) : '-'}`;
 });
 return report;
