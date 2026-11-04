@@ -1,73 +1,109 @@
-// step 294 · (1) Events: Account menu ekranlarını Date picker'ın altındaki yeni satıra taşı (Web+Mobile), Section/komşu Section/platform boyutlarını uydur · (2) 9 şüpheli taşma için salt okunur ölçüm dökümü
-const report = { done: [], errors: [], moved: [], overlapsAfter: [], dump: [] };
+// step 295 · 4 net taşma düzeltmesi (Mobile Profile actions sarma, Edit about alan HUG, Wrong email ekran HUG, My events Meta kısalt) + 4 belirsiz yer için salt okunur döküm
+const report = { done: [], errors: [], fixes: [], moved: [], overlapsAfter: [], dump: [] };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const page = figma.root.children.find(p => /^02/.test(p.name));
 await page.loadAsync();
 const BB = n => n.absoluteBoundingBox;
-const inter = (a, b) => { const x = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x), y = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y); return x > 0 && y > 0 ? [Math.round(x), Math.round(y)] : null; };
+const R = n => Math.round(n);
+const inter = (a, b) => { const x = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x), y = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y); return x > 0 && y > 0 ? [R(x), R(y)] : null; };
+const plat = n => page.children.find(x => x.type === 'SECTION' && x.name === n);
+const sub = (p, s) => { const sec = plat(p).children.find(x => x.type === 'SECTION' && x.name === s); if (!sec) throw new Error('Section yok: ' + p + ' › ' + s); return sec; };
+const screensOf = sec => sec.children.filter(c => c.type === 'FRAME' && !/^Flow ·/.test(c.name));
+const scr = (p, s, name) => { const x = screensOf(sub(p, s)).find(c => c.name === name); if (!x) throw new Error('ekran yok: ' + name); return x; };
+const rightOver = (n, p) => R(BB(n).x + BB(n).width - (BB(p).x + BB(p).width));
+const desc = n => `${n.type} "${(n.name || '').slice(0, 30)}" ${R(n.width)}x${R(n.height)} @${R(n.x)},${R(n.y)}${n.layoutMode && n.layoutMode !== 'NONE' ? ` L=${n.layoutMode}` : ''} sH=${n.layoutSizingHorizontal || '-'} sV=${n.layoutSizingVertical || '-'}${'paddingLeft' in n ? ` pad[L${n.paddingLeft} R${n.paddingRight}]` : ''}${n.layoutPositioning === 'ABSOLUTE' ? ' ABS' : ''}${'counterAxisAlignItems' in n && n.layoutMode !== 'NONE' ? ` cA=${n.counterAxisAlignItems} pA=${n.primaryAxisAlignItems}` : ''}`;
 
-// ---------- (1) taşıma ----------
-for (const dev of ['Desktop', 'Mobile']) await step('move Account menu · ' + dev, async () => {
-  const plat = page.children.find(n => n.type === 'SECTION' && n.name === (dev === 'Desktop' ? 'Web' : 'Mobile'));
-  const menu = plat.findOne(n => n.type === 'FRAME' && n.name === 'Events / Account menu · ' + dev);
-  if (!menu) throw new Error('menu ekranı yok');
-  const sec = menu.parent;
-  const others = sec.children.filter(c => c !== menu && BB(c));
-  const bottom = Math.max(...others.map(c => c.y + c.height));
-  const before = { x: menu.x, y: menu.y, secH: sec.height };
-  menu.y = Math.round(bottom + 160);
-  const needH = Math.round(menu.y + menu.height + 80);
-  if (needH > sec.height) sec.resizeWithoutConstraints(sec.width, needH);
-  report.moved.push(`${dev}: Account menu y ${before.y} -> ${menu.y}, Events Section yükseklik ${before.secH} -> ${sec.height}`);
-  // komşu alt Section'lar: üst üste binen varsa (yalnız x aralığı kesişenlerde) aşağı it
-  const subs = plat.children.filter(n => n.type === 'SECTION').sort((a, b) => a.y - b.y);
-  for (let i = 1; i < subs.length; i++) for (let j = 0; j < i; j++) {
-    const a = subs[j], b = subs[i];
-    const xo = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
-    if (xo > 0 && b.y < a.y + a.height + 160) { const d = a.y + a.height + 160 - b.y; b.y += d; report.moved.push(`${dev}: Section "${b.name}" ${d}px aşağı`); }
+// ---------- düzeltmeler ----------
+await step('F1 Mobile Own profile · Profile actions sar', async () => {
+  for (const s of screensOf(sub('Mobile', 'Own profile'))) {
+    const nodes = s.findAll(n => n.name === 'Profile actions' && n.parent && n.parent.name === 'Hero · player identity' && n.visible !== false);
+    for (const n of nodes) {
+      const p = n.parent, o = rightOver(n, p); if (o <= 4) continue;
+      const before = `${R(n.width)}x${R(n.height)}, hero ${R(p.height)}, ekran ${R(s.height)}`;
+      n.layoutWrap = 'WRAP'; n.layoutSizingHorizontal = 'FILL'; n.counterAxisSpacing = n.itemSpacing;
+      report.fixes.push(`F1 ${s.name}: ${before} -> ${R(n.width)}x${R(n.height)}, hero ${R(p.height)}, ekran ${R(s.height)}, sağ taşma ${rightOver(n, p)}`);
+    }
   }
-  const bot = Math.max(...plat.children.map(c => c.y + c.height));
-  if (dev === 'Desktop' && plat.height < bot + 120) plat.resizeWithoutConstraints(plat.width, bot + 120);
-  if (dev === 'Mobile' && plat.height < bot + 120) plat.resizeWithoutConstraints(plat.width, bot + 120);
+});
+for (const [pn, dev] of [['Web', 'Desktop'], ['Mobile', 'Mobile']]) await step('F2 Edit about alanı HUG · ' + dev, async () => {
+  const s = scr(pn, 'Own profile', `Profiles / Player / Own profile / Edit about · ${dev}`);
+  const f = s.findOne(n => n.name === 'Field' && n.parent && /About you/.test(n.parent.name));
+  if (!f) throw new Error('Field bulunamadı');
+  const v = f.findOne(n => n.name === 'Value');
+  const before = `Field ${R(f.height)}, Value ${R(v.height)}, ekran ${R(s.height)}`;
+  f.layoutSizingVertical = 'HUG';
+  report.fixes.push(`F2 ${dev}: ${before} -> Field ${R(f.height)}, Value ${R(v.height)}, ekran ${R(s.height)}`);
+});
+await step('F3 Wrong email ekranı HUG', async () => {
+  const s = scr('Web', 'Log in', 'Log in / Wrong email · Desktop');
+  const ft = s.findOne(n => n.name === 'Footer' && n.parent === s);
+  const before = `ekran ${R(s.height)}, footer alt taşma ${R(BB(ft).y + BB(ft).height - (BB(s).y + BB(s).height))}`;
+  s.primaryAxisSizingMode = 'AUTO';
+  report.fixes.push(`F3 ${before} -> ekran ${R(s.height)}, footer alt taşma ${R(BB(ft).y + BB(ft).height - (BB(s).y + BB(s).height))}`);
+});
+await step('F4 My events · Meta kısalt (Mobile)', async () => {
+  for (const s of screensOf(sub('Mobile', 'Events'))) {
+    for (const m of s.findAll(n => n.name === 'Meta' && n.parent && n.parent.name === 'Details' && n.visible !== false)) {
+      const o = rightOver(m, m.parent); if (o <= 4) continue;
+      const before = `${R(m.width)} / Details ${R(m.parent.width)}`;
+      m.layoutSizingHorizontal = 'FILL';
+      const last = m.children[m.children.length - 1];
+      let t = last.type === 'TEXT' ? last : last.findOne(x => x.type === 'TEXT');
+      if (last.type !== 'TEXT') last.layoutSizingHorizontal = 'FILL';
+      t.textAutoResize = 'HEIGHT'; t.layoutSizingHorizontal = 'FILL'; t.textTruncation = 'ENDING'; t.maxLines = 1;
+      report.fixes.push(`F4 ${s.name} · "${t.characters.slice(0, 28)}": Meta ${before} -> ${R(m.width)}, sağ taşma ${rightOver(m, m.parent)}, Meta yükseklik ${R(m.height)}`);
+    }
+  }
+});
+
+// ---------- Section / platform uyumu ----------
+await step('settle Sections', async () => {
+  for (const pn of ['Web', 'Mobile']) {
+    const p = plat(pn), subs = p.children.filter(n => n.type === 'SECTION');
+    for (const sec of subs) {
+      const needH = R(Math.max(...sec.children.map(c => c.y + c.height)) + 80);
+      if (needH > sec.height) { report.moved.push(`${pn} Section "${sec.name}" yükseklik ${R(sec.height)} -> ${needH}`); sec.resizeWithoutConstraints(sec.width, needH); }
+    }
+    subs.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < subs.length; i++) for (let j = 0; j < i; j++) {
+      const a = subs[j], b = subs[i], xo = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+      if (xo > 0 && b.y < a.y + a.height + 160) { const d = R(a.y + a.height + 160 - b.y); b.y += d; report.moved.push(`${pn} Section "${b.name}" ${d}px aşağı`); }
+    }
+    const bot = Math.max(...p.children.map(c => c.y + c.height));
+    if (p.height < bot + 120) p.resizeWithoutConstraints(p.width, bot + 120);
+  }
 });
 await step('check overlaps after', async () => {
-  for (const plat of page.children.filter(n => n.type === 'SECTION')) {
-    const subs = plat.children.filter(n => n.type === 'SECTION');
-    for (let i = 0; i < subs.length; i++) for (let j = i + 1; j < subs.length; j++) { const o = inter(BB(subs[i]), BB(subs[j])); if (o) report.overlapsAfter.push(`${plat.name} Section ${subs[i].name} x ${subs[j].name} ${o}`); }
-    for (const sub of subs) {
-      const sc = sub.children.filter(n => n.type === 'FRAME' && !/^Flow ·/.test(n.name));
-      for (let i = 0; i < sc.length; i++) for (let j = i + 1; j < sc.length; j++) { const o = inter(BB(sc[i]), BB(sc[j])); if (o) report.overlapsAfter.push(`${plat.name} ${sub.name}: ${sc[i].name} x ${sc[j].name} ${o}`); }
-    }
+  for (const p of page.children.filter(n => n.type === 'SECTION')) {
+    const subs = p.children.filter(n => n.type === 'SECTION');
+    for (let i = 0; i < subs.length; i++) for (let j = i + 1; j < subs.length; j++) { const o = inter(BB(subs[i]), BB(subs[j])); if (o) report.overlapsAfter.push(`${p.name} Section ${subs[i].name} x ${subs[j].name} ${o}`); }
+    for (const sec of subs) { const sc = screensOf(sec); for (let i = 0; i < sc.length; i++) for (let j = i + 1; j < sc.length; j++) { const o = inter(BB(sc[i]), BB(sc[j])); if (o) report.overlapsAfter.push(`${p.name} ${sec.name}: ${sc[i].name} x ${sc[j].name} ${o}`); } }
   }
   if (!report.overlapsAfter.length) report.overlapsAfter.push('none');
 });
 
-// ---------- (2) ölçüm dökümü ----------
-const CASES = [
-  ['Profiles / Player / Own profile · Mobile', 'Hero · player identity', 'Profile actions'],
-  ['Profiles / Player / Own profile / Edit about · Desktop', 'Field', 'Value'],
-  ['Profiles / Player / Own profile / Edit about · Mobile', 'Field', 'Value'],
-  ['Profiles / Player / Own profile / Edit career · Mobile', 'Edit actions', 'Buttons'],
-  ['Messenger / Add to contacts · Mobile', 'Text', 'Title'],
-  ['Shortlists / Shortlists · Mobile', 'Fact', 'Value'],
-  ['Events / My events / Applied · Mobile', 'Details', 'Meta'],
-  ['Home / Main / Calendar view · Desktop', 'Calendar', 'Month grid'],
-  ['Log in / Wrong email · Desktop', null, 'Footer'],
-  ['Profiles / Player · Desktop', 'Identity', 'Key facts'],
-  ['Profiles / Player / Name length 15+ · Desktop', 'Identity', 'Key facts']
-];
-const chain = n => { const a = []; let x = n.parent; while (x && x.type !== 'PAGE' && x.type !== 'SECTION') { a.push(`${(x.name || '').slice(0, 22)}${x.clipsContent ? '[clip]' : ''}`); x = x.parent; } return a.slice(0, 5).join(' < '); };
-for (const [scr, par, ch] of CASES) await step('dump ' + scr + ' :: ' + ch, async () => {
-  const s = page.findOne(n => n.type === 'FRAME' && n.name === scr);
-  if (!s) { report.dump.push(scr + ': ekran bulunamadı'); return; }
-  const sb = BB(s);
-  const nodes = s.findAll(n => n.name === ch && n.visible !== false && (par === null || (n.parent && n.parent.name === par)));
-  for (const n of nodes.slice(0, 3)) {
-    const b = BB(n), p = n.parent, pb = BB(p);
-    const txt = n.type === 'TEXT' ? ` · "${n.characters.slice(0, 50)}" autoResize=${n.textAutoResize}` : '';
-    const kids = 'children' in n ? ` · çocuk genişlikleri [${n.children.slice(0, 6).map(c => Math.round(c.width)).join(',')}]` : '';
-    report.dump.push(`${scr} :: ${par}>${ch}: node ${Math.round(b.width)}x${Math.round(b.height)} @${Math.round(b.x - sb.x)},${Math.round(b.y - sb.y)} (ekran ${Math.round(sb.width)}x${Math.round(sb.height)}) · ebeveyn ${Math.round(pb.width)}x${Math.round(pb.height)} layout=${p.layoutMode || '-'} · node sizing H=${n.layoutSizingHorizontal || '-'} V=${n.layoutSizingVertical || '-'} · taşıyor: sağ ${Math.round(b.x + b.width - (sb.x + sb.width))} alt ${Math.round(b.y + b.height - (sb.y + sb.height))} (ekrana göre) ${Math.round(b.x + b.width - (pb.x + pb.width))} (ebeveyne göre)${txt}${kids} · zincir: ${chain(n)}`);
-  }
-  if (!nodes.length) report.dump.push(`${scr}: ${par}>${ch} bulunamadı`);
+// ---------- salt okunur döküm ----------
+await step('D1 Calendar Month grid', async () => {
+  const s = scr('Web', 'Home page · calendar view', 'Home / Main / Calendar view · Desktop');
+  const c = s.findOne(n => n.name === 'Calendar'); const g = c.findOne(n => n.name === 'Month grid');
+  report.dump.push('D1 Calendar: ' + desc(c) + ' | parent: ' + desc(c.parent) + ' | Month grid: ' + desc(g) + ' | Calendar çocukları: ' + c.children.map(desc).join(' ; '));
+  report.dump.push('D1 ebeveyn çocukları: ' + c.parent.children.map(desc).join(' ; '));
+});
+await step('D2 Edit career · Edit actions', async () => {
+  const s = scr('Mobile', 'Own profile', 'Profiles / Player / Own profile / Edit career · Mobile');
+  const e = s.findOne(n => n.name === 'Edit actions');
+  report.dump.push('D2 Edit actions: ' + desc(e) + ` gap=${e.itemSpacing} | parent: ` + desc(e.parent) + ' | çocuklar: ' + e.children.map(desc).join(' ; ') + ' | Buttons çocukları: ' + (e.children[e.children.length - 1].children || []).map(desc).join(' ; '));
+});
+await step('D3 Add to contacts · Composer', async () => {
+  const s = scr('Mobile', 'Messenger', 'Messenger / Add to contacts · Mobile');
+  const c = s.findOne(n => n.name === 'Composer');
+  report.dump.push('D3 Composer: ' + desc(c) + ' | çocuklar: ' + c.children.map(desc).join(' ; '));
+  for (const k of c.children) if ('children' in k) report.dump.push('D3 ' + k.name + ' altı: ' + k.children.map(x => desc(x) + (x.type === 'TEXT' ? ` "${x.characters.slice(0, 40)}"` : '')).join(' ; '));
+});
+await step('D4 Shortlists · taşan Fact değeri', async () => {
+  const s = scr('Mobile', 'Shortlists', 'Shortlists / Shortlists · Mobile');
+  const bad = s.findAll(n => n.name === 'Value' && n.parent && n.parent.name === 'Fact' && n.visible !== false && rightOver(n, n.parent) > 4);
+  report.dump.push(`D4 taşan Fact değeri sayısı: ${bad.length}`);
+  for (const n of bad.slice(0, 3)) report.dump.push('D4 ' + desc(n) + ` taşma ${rightOver(n, n.parent)} | Fact: ` + desc(n.parent) + ' | Key facts: ' + desc(n.parent.parent) + ' | Fact çocukları: ' + n.parent.children.map(desc).join(' ; ') + ' | ' + (n.type === 'TEXT' ? `"${n.characters}"` : ''));
 });
 return report;
