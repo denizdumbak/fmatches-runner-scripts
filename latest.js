@@ -1,54 +1,61 @@
-// step 299 · inspect (salt okunur, G4 minWidth sınaması hariç): ekran içi yetim/mutlak konumlu öğeler + "My events / No events created · Desktop" ağacı
-const report = { errors: [], mine: [], absGroups: [], topLeft: [], g4: [] };
+// step 300 · (1) Mobile Shortlists kolonları: Age / Contract until etiketi + Fact HUG, Nationality FILL · (2) salt okunur: 02 · Website tüm ekranlarda metin-metin çakışması
+const report = { done: [], errors: [], fixes: [], textOverlaps: [] };
+async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const page = figma.root.children.find(p => /^02/.test(p.name));
 await page.loadAsync();
 const BB = n => n.absoluteBoundingBox;
 const R = n => Math.round(n);
-const nm = n => (n.name || '').slice(0, 36);
-const SKIP = /^(Flow ·|Note ·)/;
-const rel = (n, s) => `${R(BB(n).x - BB(s).x)},${R(BB(n).y - BB(s).y)} ${R(BB(n).width)}x${R(BB(n).height)}`;
+const rightOver = (n, p) => R(BB(n).x + BB(n).width - (BB(p).x + BB(p).width));
 
-// A) Kullanıcının gösterdiği ekran: 3 seviye ağaç
-const mine = page.findAll(n => n.type === 'FRAME' && /^Events \/ My events \/ No events created · Desktop$/.test(n.name))[0];
-if (mine) {
-  const tree = (n, d) => { if (d > 3 || !('children' in n)) return; for (const c of n.children) { mine_push(c, d); tree(c, d + 1); } };
-  const mine_push = (c, d) => report.mine.push(`${'  '.repeat(d)}${c.type} "${nm(c)}" ${rel(c, mine)}${c.layoutPositioning === 'ABSOLUTE' ? ' ABS' : ''}${c.visible === false ? ' hidden' : ''}`);
-  tree(mine, 0);
-} else report.errors.push('My events / No events created · Desktop bulunamadı');
-
-// B) tüm ekranlarda: mutlak konumlu çocuklar (derinlik <= 4) ve sol üst köşede (0..8, 0..8) duranlar
-const groups = new Map(), tl = new Map();
-for (const plat of page.children.filter(n => n.type === 'SECTION')) for (const sec of plat.children.filter(n => n.type === 'SECTION')) {
-  for (const s of sec.children.filter(c => c.type === 'FRAME' && !SKIP.test(c.name))) {
-    const walk = (p, d) => {
-      if (d > 4 || !('children' in p)) return;
-      for (const c of p.children) {
-        if (c.visible === false || !BB(c)) continue;
-        const abs = c.layoutPositioning === 'ABSOLUTE';
-        const x = BB(c).x - BB(s).x, y = BB(c).y - BB(s).y;
-        const stray = x >= -2 && x <= 8 && y >= -2 && y <= 8 && c.type !== 'RECTANGLE' && p !== s && !SKIP.test(c.name);
-        const stray0 = p === s && (!s.layoutMode || s.layoutMode === 'NONE') && x >= -2 && x <= 8 && y >= -2 && y <= 8;
-        if (abs) { const k = `${plat.name} › ${sec.name} :: ${nm(p)} > ${nm(c)}`; const g = groups.get(k) || { n: 0, ex: `${s.name} @ ${rel(c, s)}` }; g.n++; groups.set(k, g); }
-        if (stray || stray0) { const k = `${plat.name} › ${sec.name} :: ${nm(p)} > ${nm(c)} (${c.type})`; const g = tl.get(k) || { n: 0, ex: `${s.name} @ ${rel(c, s)}` }; g.n++; tl.set(k, g); }
-        if (c.type === 'FRAME' || c.type === 'GROUP' || c.type === 'INSTANCE') walk(c, d + 1);
-      }
-    };
-    walk(s, 0);
-  }
-}
-report.absGroups = [...groups.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 40).map(([k, g]) => `${g.n}x ${k} · örnek ${g.ex}`);
-report.topLeft = [...tl.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 40).map(([k, g]) => `${g.n}x ${k} · örnek ${g.ex}`);
-
-// C) Shortlists Fact asgari genişlik sınaması (ilk Key facts)
-try {
+await step('G4c Shortlists kolonları (HUG)', async () => {
   const sec = page.children.find(n => n.type === 'SECTION' && n.name === 'Mobile').children.find(n => n.type === 'SECTION' && n.name === 'Shortlists');
   const s = sec.children.find(c => c.type === 'FRAME' && c.name === 'Shortlists / Shortlists · Mobile');
-  const kf = s.findOne(n => n.name === 'Key facts');
-  const inInst = n => { let x = n.parent; while (x) { if (x.type === 'INSTANCE') return x.name; x = x.parent; } return 'no'; };
-  report.g4.push(`Key facts ${kf.type} instanceİçinde=${inInst(kf)} gap=${kf.itemSpacing}`);
-  for (const f of kf.children) report.g4.push(`${f.type} "${nm(f)}" w=${R(f.width)} min=${f.minWidth} max=${f.maxWidth} grow=${f.layoutGrow} sH=${f.layoutSizingHorizontal} cA=${f.counterAxisAlignItems} pad[L${f.paddingLeft} R${f.paddingRight}]`);
-  const age = kf.children[0], before = R(age.width);
-  try { age.minWidth = null; age.maxWidth = null; age.layoutSizingHorizontal = 'FIXED'; age.resize(23, age.height); report.g4.push(`deneme: Age Fact ${before} -> ${R(age.width)} (min=${age.minWidth})`); }
-  catch (e) { report.g4.push('deneme hata: ' + e.message); }
-} catch (e) { report.errors.push('G4 probe: ' + e.message); }
+  const kfs = s.findAll(n => n.name === 'Key facts' && n.visible !== false);
+  const kind = f => { const l = f.findOne(n => n.type === 'TEXT' && n.name === 'Label'); const t = l ? l.characters : ''; return /^age/i.test(t) ? 'age' : /contract/i.test(t) ? 'contract' : /national/i.test(t) ? 'nat' : '?'; };
+  let worst = -999;
+  for (const kf of kfs) {
+    for (const f of kf.children) {
+      const k = kind(f);
+      if (k === 'age' || k === 'contract') {
+        const lab = f.findOne(n => n.type === 'TEXT' && n.name === 'Label');
+        lab.textAutoResize = 'WIDTH_AND_HEIGHT'; lab.layoutSizingHorizontal = 'HUG';
+        f.layoutSizingHorizontal = 'HUG';
+      } else if (k === 'nat') f.layoutSizingHorizontal = 'FILL';
+    }
+    for (const f of kf.children) if (kind(f) === 'nat') { const v = f.findOne(n => n.name === 'Value'); worst = Math.max(worst, rightOver(v, f)); }
+  }
+  const sizes = kfs.slice(0, 2).map(kf => kf.children.map(f => `${kind(f)} ${R(f.width)}`).join(' / ')).join(' ; ');
+  report.fixes.push(`G4c kolonlar (ilk 2 satır): ${sizes} · Nationality en büyük sağ taşma ${worst} (<=0 olmalı)`);
+});
+
+// ---------- metin-metin çakışması (salt okunur) ----------
+const SKIPSUB = /^(Ticker|Scrim|Lightbox|Badge|Profile menu|Message menu|Thread menu|Account menu|Confirm dialog|Book dialog|Option list|Date picker|Map card|Bottom sheet|Map marker|Map cluster|Map controls|Map panel|Silhouette|Club crest|Hero visual|Preview ·|Stage|Flow ·|Note ·)/;
+const SKIPSCR = /(Gallery lightbox|Profile menu|Block person|Delete message|Message menu|Thread menu|Book tournament|Request sent|Account menu|Date picker)/;
+const inter = (a, b) => { const x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y), x2 = Math.min(a.x + a.width, b.x + b.width), y2 = Math.min(a.y + a.height, b.y + b.height); return x2 > x1 && y2 > y1 ? { x: x1, y: y1, w: x2 - x1, h: y2 - y1 } : null; };
+const groups = new Map();
+await step('T text overlaps', async () => {
+  for (const plat of page.children.filter(n => n.type === 'SECTION')) for (const sec of plat.children.filter(n => n.type === 'SECTION')) {
+    for (const s of sec.children.filter(c => c.type === 'FRAME' && !/^Flow ·/.test(c.name))) {
+      if (SKIPSCR.test(s.name)) continue;
+      const sb = BB(s), texts = [];
+      const walk = (n, clip) => {
+        if (n.visible === false || !BB(n) || SKIPSUB.test(n.name)) return;
+        let c = clip;
+        if (n !== s && n.clipsContent) { c = c ? inter(c, BB(n)) : BB(n); if (!c) return; }
+        if (n.type === 'TEXT') { const b = c ? inter(BB(n), c) : BB(n); if (b) texts.push({ b: { x: b.x, y: b.y, width: b.w === undefined ? b.width : b.w, height: b.h === undefined ? b.height : b.h }, t: n.characters.slice(0, 26) }); return; }
+        if ('children' in n) for (const k of n.children) walk(k, c);
+      };
+      for (const k of s.children) walk(k, sb);
+      if (texts.length > 700) { report.errors.push('çok metin: ' + s.name); continue; }
+      for (let i = 0; i < texts.length; i++) for (let j = i + 1; j < texts.length; j++) {
+        const a = texts[i], b = texts[j], o = inter(a.b, b.b); if (!o || o.w <= 4 || o.h <= 4) continue;
+        const ratio = (o.w * o.h) / Math.min(a.b.width * a.b.height, b.b.width * b.b.height); if (ratio < 0.2) continue;
+        const key = `${plat.name} › ${sec.name} :: "${a.t}" x "${b.t}"`;
+        const g = groups.get(key) || { n: 0, ex: `${s.name} @ ${R(o.x - sb.x)},${R(o.y - sb.y)} ${R(o.w)}x${R(o.h)}` }; g.n++; groups.set(key, g);
+      }
+    }
+  }
+  report.textOverlaps = [...groups.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 60).map(([k, g]) => `${g.n}x ${k} · ${g.ex}`);
+  report.textOverlapGroups = groups.size;
+});
 return report;
