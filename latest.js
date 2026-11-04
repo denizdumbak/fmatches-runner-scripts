@@ -1,43 +1,54 @@
-// step 298 · Mobile Shortlists · Key facts kolonlarını içerikten ölç: Age ve Contract until sabit (doğal genişlik), Nationality kalanı alır, kısaltma geri alınır
-const report = { done: [], errors: [], fixes: [] };
-async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
+// step 299 · inspect (salt okunur, G4 minWidth sınaması hariç): ekran içi yetim/mutlak konumlu öğeler + "My events / No events created · Desktop" ağacı
+const report = { errors: [], mine: [], absGroups: [], topLeft: [], g4: [] };
 const page = figma.root.children.find(p => /^02/.test(p.name));
 await page.loadAsync();
 const BB = n => n.absoluteBoundingBox;
 const R = n => Math.round(n);
-const rightOver = (n, p) => R(BB(n).x + BB(n).width - (BB(p).x + BB(p).width));
-await step('G4b Shortlists kolonları', async () => {
+const nm = n => (n.name || '').slice(0, 36);
+const SKIP = /^(Flow ·|Note ·)/;
+const rel = (n, s) => `${R(BB(n).x - BB(s).x)},${R(BB(n).y - BB(s).y)} ${R(BB(n).width)}x${R(BB(n).height)}`;
+
+// A) Kullanıcının gösterdiği ekran: 3 seviye ağaç
+const mine = page.findAll(n => n.type === 'FRAME' && /^Events \/ My events \/ No events created · Desktop$/.test(n.name))[0];
+if (mine) {
+  const tree = (n, d) => { if (d > 3 || !('children' in n)) return; for (const c of n.children) { mine_push(c, d); tree(c, d + 1); } };
+  const mine_push = (c, d) => report.mine.push(`${'  '.repeat(d)}${c.type} "${nm(c)}" ${rel(c, mine)}${c.layoutPositioning === 'ABSOLUTE' ? ' ABS' : ''}${c.visible === false ? ' hidden' : ''}`);
+  tree(mine, 0);
+} else report.errors.push('My events / No events created · Desktop bulunamadı');
+
+// B) tüm ekranlarda: mutlak konumlu çocuklar (derinlik <= 4) ve sol üst köşede (0..8, 0..8) duranlar
+const groups = new Map(), tl = new Map();
+for (const plat of page.children.filter(n => n.type === 'SECTION')) for (const sec of plat.children.filter(n => n.type === 'SECTION')) {
+  for (const s of sec.children.filter(c => c.type === 'FRAME' && !SKIP.test(c.name))) {
+    const walk = (p, d) => {
+      if (d > 4 || !('children' in p)) return;
+      for (const c of p.children) {
+        if (c.visible === false || !BB(c)) continue;
+        const abs = c.layoutPositioning === 'ABSOLUTE';
+        const x = BB(c).x - BB(s).x, y = BB(c).y - BB(s).y;
+        const stray = x >= -2 && x <= 8 && y >= -2 && y <= 8 && c.type !== 'RECTANGLE' && p !== s && !SKIP.test(c.name);
+        const stray0 = p === s && (!s.layoutMode || s.layoutMode === 'NONE') && x >= -2 && x <= 8 && y >= -2 && y <= 8;
+        if (abs) { const k = `${plat.name} › ${sec.name} :: ${nm(p)} > ${nm(c)}`; const g = groups.get(k) || { n: 0, ex: `${s.name} @ ${rel(c, s)}` }; g.n++; groups.set(k, g); }
+        if (stray || stray0) { const k = `${plat.name} › ${sec.name} :: ${nm(p)} > ${nm(c)} (${c.type})`; const g = tl.get(k) || { n: 0, ex: `${s.name} @ ${rel(c, s)}` }; g.n++; tl.set(k, g); }
+        if (c.type === 'FRAME' || c.type === 'GROUP' || c.type === 'INSTANCE') walk(c, d + 1);
+      }
+    };
+    walk(s, 0);
+  }
+}
+report.absGroups = [...groups.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 40).map(([k, g]) => `${g.n}x ${k} · örnek ${g.ex}`);
+report.topLeft = [...tl.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 40).map(([k, g]) => `${g.n}x ${k} · örnek ${g.ex}`);
+
+// C) Shortlists Fact asgari genişlik sınaması (ilk Key facts)
+try {
   const sec = page.children.find(n => n.type === 'SECTION' && n.name === 'Mobile').children.find(n => n.type === 'SECTION' && n.name === 'Shortlists');
   const s = sec.children.find(c => c.type === 'FRAME' && c.name === 'Shortlists / Shortlists · Mobile');
-  const kfs = s.findAll(n => n.name === 'Key facts' && n.visible !== false);
-  const kind = f => { const l = f.findOne(n => n.type === 'TEXT' && n.name === 'Label'); const t = l ? l.characters : ''; return /^age/i.test(t) ? 'age' : /contract/i.test(t) ? 'contract' : /national/i.test(t) ? 'nat' : '?'; };
-  const colW = { age: 0, contract: 0 };
-  // 1) doğal genişlikleri ölç
-  for (const kf of kfs) for (const f of kf.children) {
-    const k = kind(f); if (k !== 'age' && k !== 'contract') continue;
-    const lab = f.findOne(n => n.type === 'TEXT' && n.name === 'Label'), v = f.findOne(n => n.name === 'Value');
-    lab.textAutoResize = 'WIDTH_AND_HEIGHT';
-    colW[k] = Math.max(colW[k], Math.ceil(Math.max(lab.width, v.width)));
-    lab.textAutoResize = 'HEIGHT'; lab.layoutSizingHorizontal = 'FILL';
-  }
-  report.fixes.push(`doğal kolon genişlikleri: Age ${colW.age}, Contract until ${colW.contract}`);
-  // 2) sabit genişlik + Nationality'yi eski haline getir
-  let worstOver = -999, labelWrap = 0;
-  for (const kf of kfs) for (const f of kf.children) {
-    const k = kind(f);
-    if (k === 'age' || k === 'contract') {
-      f.layoutSizingHorizontal = 'FIXED'; f.resize(colW[k], f.height); f.layoutSizingVertical = 'HUG';
-      const lab = f.findOne(n => n.type === 'TEXT' && n.name === 'Label'); if (lab.height > 18) labelWrap++;
-    } else if (k === 'nat') {
-      f.layoutSizingHorizontal = 'FILL';
-      const v = f.findOne(n => n.name === 'Value'); v.layoutSizingHorizontal = 'HUG';
-      const t = v.type === 'TEXT' ? v : v.findOne(x => x.type === 'TEXT');
-      t.textTruncation = 'DISABLED'; t.textAutoResize = 'WIDTH_AND_HEIGHT'; t.layoutSizingHorizontal = 'HUG';
-    }
-  }
-  for (const kf of kfs) for (const f of kf.children) if (kind(f) === 'nat') { const v = f.findOne(n => n.name === 'Value'); worstOver = Math.max(worstOver, rightOver(v, f)); }
-  const sizes = kfs.slice(0, 2).map(kf => kf.children.map(f => `${kind(f)} ${R(f.width)}`).join(' / ')).join(' ; ');
-  const natText = kfs.map(kf => { const f = kf.children.find(x => kind(x) === 'nat'); const t = f.findOne(x => x.type === 'TEXT' && x.name !== 'Label'); return `${t.characters} ${R(t.width)} ${t.textTruncation}`; }).join(' | ');
-  report.fixes.push(`kolonlar (ilk 2 satır): ${sizes} · Nationality en büyük sağ taşma ${worstOver} (<=0 olmalı) · etiketi sarılan ${labelWrap} · uyruk metinleri: ${natText}`);
-});
+  const kf = s.findOne(n => n.name === 'Key facts');
+  const inInst = n => { let x = n.parent; while (x) { if (x.type === 'INSTANCE') return x.name; x = x.parent; } return 'no'; };
+  report.g4.push(`Key facts ${kf.type} instanceİçinde=${inInst(kf)} gap=${kf.itemSpacing}`);
+  for (const f of kf.children) report.g4.push(`${f.type} "${nm(f)}" w=${R(f.width)} min=${f.minWidth} max=${f.maxWidth} grow=${f.layoutGrow} sH=${f.layoutSizingHorizontal} cA=${f.counterAxisAlignItems} pad[L${f.paddingLeft} R${f.paddingRight}]`);
+  const age = kf.children[0], before = R(age.width);
+  try { age.minWidth = null; age.maxWidth = null; age.layoutSizingHorizontal = 'FIXED'; age.resize(23, age.height); report.g4.push(`deneme: Age Fact ${before} -> ${R(age.width)} (min=${age.minWidth})`); }
+  catch (e) { report.g4.push('deneme hata: ' + e.message); }
+} catch (e) { report.errors.push('G4 probe: ' + e.message); }
 return report;
