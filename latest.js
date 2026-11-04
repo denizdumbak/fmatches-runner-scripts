@@ -1,4 +1,4 @@
-// step 305 · Focus: border/focus -> green/750 (#0a783a), yeni border/focus-inverse (green/400) · 6 set'e State=Focus varyantı (2 px halka, öğeden 2 px dışarıda, ayrı "Focus ring" katmanı) · Icon button'a State özelliği · Buttons & tags'e geliştirici notu
+// step 305 (düzeltme: setReactionsAsync, Buttons & tags dikey dizilim) · Focus: border/focus -> green/750 (#0a783a), yeni border/focus-inverse (green/400) · 6 set'e State=Focus varyantı (2 px halka, öğeden 2 px dışarıda, ayrı "Focus ring" katmanı) · Icon button'a State özelliği · Buttons & tags'e geliştirici notu
 const report = { done: [], errors: [], fixes: [], sets: [], moved: [] };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const R = n => Math.round(n);
@@ -57,7 +57,7 @@ const getSet = nm => { const s = p01.findOne(n => n.type === 'COMPONENT_SET' && 
 const blockOf = s => { let x = s; while (x.parent && x.parent.type !== 'SECTION') x = x.parent; return x; };
 const before = new Map();
 function remember(s) { const b = blockOf(s); if (!before.has(b.id)) before.set(b.id, { node: b, box: Object.assign({}, BB(b)) }); }
-function makeFocus(s, srcRe, nameFrom, targetOf, radOf) {
+async function makeFocus(s, srcRe, nameFrom, targetOf, radOf) {
   remember(s);
   for (const c of s.children.filter(c => /State=Focus/.test(c.name))) c.remove();
   const srcs = s.children.filter(c => srcRe.test(c.name));
@@ -66,7 +66,7 @@ function makeFocus(s, srcRe, nameFrom, targetOf, radOf) {
     const cl = src.clone();
     s.appendChild(cl);
     cl.name = nameFrom(src.name);
-    cl.reactions = [];
+    await cl.setReactionsAsync([]);
     if (s.layoutMode === 'NONE') {
       const row = s.children.filter(c => c !== cl && c.y < src.y + src.height && c.y + c.height > src.y);
       const right = Math.max.apply(null, row.map(c => c.x + c.width));
@@ -85,26 +85,26 @@ const pill = () => 999;
 
 // ---------- 2. setler ----------
 await step('2a Button', async () => {
-  makeFocus(getSet('Button'), /State=Default/, n => n.replace('State=Default', 'State=Focus'), c => c, pill);
+  await makeFocus(getSet('Button'), /State=Default/, n => n.replace('State=Default', 'State=Focus'), c => c, pill);
 });
 await step('2b Icon button (State özelliği + Focus)', async () => {
   const s = getSet('Icon button');
   for (const c of s.children) if (!/State=/.test(c.name)) c.name = c.name + ', State=Default';
-  makeFocus(s, /State=Default/, n => n.replace('State=Default', 'State=Focus'), c => c, pill);
+  await makeFocus(s, /State=Default/, n => n.replace('State=Default', 'State=Focus'), c => c, pill);
   const g = s.variantGroupProperties || {};
   report.fixes.push('2b Icon button özellikleri: ' + Object.keys(g).map(k => `${k}=${g[k].values.length}`).join(', '));
 });
 await step('2c Filter chip', async () => {
-  makeFocus(getSet('Filter chip'), /^State=Default$/, () => 'State=Focus', c => c, pill);
+  await makeFocus(getSet('Filter chip'), /^State=Default$/, () => 'State=Focus', c => c, pill);
 });
 await step('2d Checkbox', async () => {
-  makeFocus(getSet('Checkbox'), /State=Default/, n => n.replace('State=Default', 'State=Focus'), c => c.findOne(n => n.name === 'Box'), () => 8);
+  await makeFocus(getSet('Checkbox'), /State=Default/, n => n.replace('State=Default', 'State=Focus'), c => c.findOne(n => n.name === 'Box'), () => 8);
 });
 await step('2e Switch', async () => {
-  makeFocus(getSet('Switch'), /State=Default/, n => n.replace('State=Default', 'State=Focus'), c => c.findOne(n => n.name === 'Track'), pill);
+  await makeFocus(getSet('Switch'), /State=Default/, n => n.replace('State=Default', 'State=Focus'), c => c.findOne(n => n.name === 'Track'), pill);
 });
 await step('2f Link row', async () => {
-  makeFocus(getSet('Link row'), /State=Default/, n => n.replace('State=Default', 'State=Focus'), c => c, () => 8);
+  await makeFocus(getSet('Link row'), /State=Default/, n => n.replace('State=Default', 'State=Focus'), c => c, () => 8);
 });
 
 // ---------- 3. geliştirici notu ----------
@@ -141,6 +141,12 @@ await step('4 yerleşim', async () => {
     let r = 0, bt = 0; for (const k of sec.children) { r = Math.max(r, k.x + k.width); bt = Math.max(bt, k.y + k.height); }
     if (r + 80 > sec.width || bt + 80 > sec.height) sec.resizeWithoutConstraints(Math.max(sec.width, R(r + 80)), Math.max(sec.height, R(bt + 80)));
   }
+  // 2 · Buttons & tags: çocukları y sırasıyla alt alta diz (metin-metin 16, diğer 120)
+  { const sec = blockOf(getSet('Button')).parent; const kids = sec.children.slice().sort((a, b) => a.y - b.y);
+    let y = kids[0].y + kids[0].height, prevText = kids[0].type === 'TEXT';
+    for (let i = 1; i < kids.length; i++) { const k = kids[i], isText = k.type === 'TEXT'; const ny = y + ((isText && prevText) ? 16 : 120); if (k.y !== ny) report.moved.push(`${sec.name} › ${k.name} ${R(k.y)} -> ${R(ny)}`); k.y = ny; y = ny + k.height; prevText = isText; }
+    let r = 0; for (const k of sec.children) r = Math.max(r, k.x + k.width);
+    sec.resizeWithoutConstraints(Math.max(sec.width, R(r + 80)), R(y + 80)); }
   // Section'lar yan yana: x sırası, 160 aralık
   const secs = p01.children.filter(n => n.type === 'SECTION').sort((a, b) => a.x - b.x);
   for (let i = 1; i < secs.length; i++) { const want = secs[i - 1].x + secs[i - 1].width + 160; if (secs[i].x < want) secs[i].x = want; }
