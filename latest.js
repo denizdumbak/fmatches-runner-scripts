@@ -1,129 +1,55 @@
-// step 308 · hover: Icon button, Filter chip, Role card (yeni State özelliği), Calendar day, Map marker için State=Hover varyantı + ON_HOVER CHANGE_TO 0.15 · 02'de kendi tıklama bağlantısı olan instance'lara da hover eklenir · yerleşim kontrolü
-const report = { done: [], errors: [], sets: [], fixes: [], moved: [] };
+// step 309 · 308 yerleşim düzeltmesi: fazladan itilenleri geri al (2 · Buttons & tags: Tag -1104, Focus notu -1020 · 4 · Home page: Event row ve Ticker · role states -2280) · 7 · Map: Map marker / Map cluster çakışmasını aşağı iterek çöz
+const report = { done: [], errors: [], fixes: [] };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const R = n => Math.round(n);
 const p01 = figma.root.children.find(p => /^01/.test(p.name));
-const p02 = figma.root.children.find(p => /^02/.test(p.name));
-await p01.loadAsync(); await p02.loadAsync();
-await figma.setCurrentPageAsync(p01);
-const vars = await figma.variables.getLocalVariablesAsync();
-const V = name => { const v = vars.find(x => x.name === name); if (!v) throw new Error('variable missing: ' + name); return v; };
-function resolve(v, d) { const val = v.valuesByMode[Object.keys(v.valuesByMode)[0]]; if (val && val.type === 'VARIABLE_ALIAS' && (d || 0) < 6) { const t = vars.find(x => x.id === val.id); return t ? resolve(t, (d || 0) + 1) : null; } return val; }
-const BP = name => { const v = V(name); const c = resolve(v); return figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: c.r, g: c.g, b: c.b } }, 'color', v); };
-const boundName = p => { if (!p || !p.boundVariables || !p.boundVariables.color) return null; const v = vars.find(x => x.id === p.boundVariables.color.id); return v ? v.name : null; };
+await p01.loadAsync();
 const BB = n => n.absoluteBoundingBox;
-const getSet = nm => { const s = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === nm); if (!s) throw new Error('set yok: ' + nm); return s; };
-const blockOf = s => { let x = s; while (x.parent && x.parent.type !== 'SECTION') x = x.parent; return x; };
-const before = new Map();
-function remember(s) { const b = blockOf(s); if (!before.has(b.id)) before.set(b.id, { node: b, box: Object.assign({}, BB(b)) }); }
-const hoverReact = dest => ({ trigger: { type: 'ON_HOVER' }, actions: [{ type: 'NODE', destinationId: dest.id, navigation: 'CHANGE_TO', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.15 }, preserveScrollPosition: false, resetVideoPosition: false }] });
-const pairs = []; // [default, hover]
+const sec = nm => { const s = p01.children.find(n => n.type === 'SECTION' && n.name === nm); if (!s) throw new Error('Section yok: ' + nm); return s; };
+const kid = (s, nm) => { const k = s.children.find(n => n.name === nm); if (!k) throw new Error(s.name + ' içinde yok: ' + nm + ' · var: ' + s.children.map(c => c.name).join(', ')); return k; };
+const inter = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-async function makeHover(s, srcRe, nameFrom, styleFn) {
-  remember(s);
-  for (const c of s.children.filter(c => /State=Hover/.test(c.name))) c.remove();
-  const srcs = s.children.filter(c => srcRe.test(c.name));
-  for (const src of srcs) {
-    const cl = src.clone(); s.appendChild(cl); cl.name = nameFrom(src.name);
-    await cl.setReactionsAsync([]);
-    const ring = cl.findOne(n => n.name === 'Focus ring'); if (ring) ring.remove();
-    if (s.layoutMode === 'NONE') {
-      const row = s.children.filter(c => c !== cl && c.y < src.y + src.height && c.y + c.height > src.y);
-      cl.x = Math.max.apply(null, row.map(c => c.x + c.width)) + 40; cl.y = src.y;
-    }
-    await styleFn(cl, src);
-    const keep = (src.reactions || []).filter(r => !(r.trigger && r.trigger.type === 'ON_HOVER'));
-    await src.setReactionsAsync(keep.concat([hoverReact(cl)]));
-    pairs.push([src, cl]);
-  }
-  if (s.layoutMode && s.layoutMode !== 'NONE') { s.primaryAxisSizingMode = 'AUTO'; s.counterAxisSizingMode = 'AUTO'; }
-  else { let r = 0, b = 0; for (const c of s.children) { r = Math.max(r, c.x + c.width); b = Math.max(b, c.y + c.height); } s.resizeWithoutConstraints(R(r + 24), R(b + 24)); }
-  report.sets.push(`${s.name}: +${srcs.length} Hover · toplam ${s.children.length} varyant`);
-}
-function recolorIcons(node, from, to) {
-  let n = 0;
-  for (const v of node.findAll(x => x.type === 'VECTOR' || x.type === 'BOOLEAN_OPERATION' || x.type === 'ELLIPSE' || x.type === 'RECTANGLE' || x.type === 'LINE')) {
-    if (v.strokes && v.strokes.length && boundName(v.strokes[0]) === from) { v.strokes = [BP(to)]; n++; }
-    if (v.fills && v.fills !== figma.mixed && v.fills.length && boundName(v.fills[0]) === from) { v.fills = [BP(to)]; n++; }
-  }
-  return n;
-}
-
-await step('1 Icon button', async () => {
-  const s = getSet('Icon button'); const log = [];
-  await makeHover(s, /State=Default/, n => n.replace('State=Default', 'State=Hover'), async (c) => {
-    const f = c.fills.length ? boundName(c.fills[0]) : null;
-    let to;
-    if (f === 'color/bg/brand') to = 'color/bg/brand-hover';
-    else if (f === 'color/bg/subtle') { to = 'color/bg/brand-subtle'; recolorIcons(c, 'color/icon/default', 'color/icon/brand'); }
-    else { to = 'color/bg/subtle'; }
-    c.fills = [BP(to)];
-    log.push(`${c.name.replace(', State=Hover', '')}: ${f ? f.replace('color/', '') : 'yok'} -> ${to.replace('color/', '')}`);
-  });
-  report.iconButtonHover = log;
+await step('1 Buttons & tags', async () => {
+  const s = sec('2 · Buttons & tags');
+  const tag = kid(s, 'Tag'), note = kid(s, 'Note · Focus ring'), chip = kid(s, 'Filter chip');
+  const b = `Tag ${R(tag.y)} · Filter chip ${R(chip.y)} · not ${R(note.y)}`;
+  tag.y -= 1104; note.y -= 1020;
+  report.fixes.push(`1 önce ${b} -> sonra Tag ${R(tag.y)} · Filter chip ${R(chip.y)} · not ${R(note.y)}`);
+  const order = s.children.slice().sort((a, c) => a.y - c.y).map(n => `${n.name}@${R(n.y)}-${R(n.y + n.height)}`);
+  report.order2 = order;
 });
-await step('2 Filter chip', async () => {
-  await makeHover(getSet('Filter chip'), /^State=Default$/, () => 'State=Hover', async c => { c.strokes = [BP('color/border/strong')]; });
+await step('2 Home page', async () => {
+  const s = sec('4 · Home page');
+  const out = [];
+  for (const nm of ['Event row', 'Ticker · role states']) { const k = kid(s, nm); const y0 = k.y; k.y -= 2280; out.push(`${nm} ${R(y0)} -> ${R(k.y)}`); }
+  report.fixes.push('2 ' + out.join(' · '));
+  report.order4 = s.children.slice().sort((a, c) => a.y - c.y).map(n => `${n.name}@${R(n.x)},${R(n.y)}-${R(n.y + n.height)}`);
 });
-await step('3 Role card', async () => {
-  const s = getSet('Role card');
-  for (const c of s.children) if (!/State=/.test(c.name)) c.name = c.name + ', State=Default';
-  await makeHover(s, /State=Default/, n => n.replace('State=Default', 'State=Hover'), async c => {
-    const t = c.findOne(n => n.name === 'Title' && n.type === 'TEXT'); if (t) t.fills = [BP('color/text/brand')];
-  });
+await step('3 Map', async () => {
+  const s = sec('7 · Map');
+  const m = kid(s, 'Map marker'), c = kid(s, 'Map cluster');
+  const before = `marker ${R(m.x)},${R(m.y)} ${R(m.width)}x${R(m.height)} · cluster ${R(c.x)},${R(c.y)} ${R(c.width)}x${R(c.height)}`;
+  if (inter(BB(m), BB(c))) {
+    const first = m.y <= c.y ? m : c, second = first === m ? c : m;
+    const dy = first.y + first.height + 120 - second.y;
+    const line = second.y;
+    for (const k of s.children) if (k !== first && k.y >= line - 1) k.y += dy;
+    report.fixes.push(`3 ${second.name} ve altındakiler +${R(dy)} · önce ${before}`);
+  } else report.fixes.push('3 çakışma yok · ' + before);
 });
-await step('4 Calendar day', async () => {
-  await makeHover(getSet('Calendar day'), /State=Default/, n => n.replace('State=Default', 'State=Hover'), async c => { c.fills = [BP('color/bg/subtle')]; });
-});
-await step('5 Map marker', async () => {
-  const fx = (await figma.getLocalEffectStylesAsync()).find(e => e.name === 'Shadow/Raised'); if (!fx) throw new Error('Shadow/Raised yok');
-  await makeHover(getSet('Map marker'), /State=Default/, n => n.replace('State=Default', 'State=Hover'), async c => { await c.setEffectStyleIdAsync(fx.id); });
-});
-
-// 02: kendi bağlantısı olan instance'lara hover ekle
-await step('6 instance hover', async () => {
-  const map = new Map(pairs.map(([d, h]) => [d.id, h]));
-  let added = 0, inherited = 0, total = 0;
-  for (const inst of p02.findAll(n => n.type === 'INSTANCE')) {
-    const m = await inst.getMainComponentAsync(); if (!m || !map.has(m.id)) continue;
-    total++;
-    const rs = inst.reactions || [];
-    if (rs.some(r => r.trigger && r.trigger.type === 'ON_HOVER')) { inherited++; continue; }
-    await inst.setReactionsAsync(rs.concat([hoverReact(map.get(m.id))]));
-    added++;
-  }
-  report.fixes.push(`6 02'de instance ${total}: hover zaten var ${inherited}, eklenen ${added}`);
-});
-
-// yerleşim
-await step('7 yerleşim', async () => {
-  for (const { node: b, box: o } of before.values()) {
-    const nb = BB(b); const dy = (nb.y + nb.height) - (o.y + o.height); const dx = (nb.x + nb.width) - (o.x + o.width);
-    const sec = b.parent;
-    for (const k of sec.children) {
-      if (k === b) continue; const kb = BB(k); if (!kb) continue;
-      if (dy > 0 && kb.x < o.x + o.width + Math.max(dx, 0) && kb.x + kb.width > o.x && kb.y >= o.y + o.height - 1) { k.y += dy; report.moved.push(`${sec.name} › ${k.name} +${R(dy)}`); }
-      else if (dx > 0 && kb.y < o.y + o.height && kb.y + kb.height > o.y && kb.x >= o.x + o.width - 1) { k.x += dx; report.moved.push(`${sec.name} › ${k.name} x+${R(dx)}`); }
-    }
-  }
+await step('4 Section boyları + kontrol', async () => {
   const secs = p01.children.filter(n => n.type === 'SECTION');
-  for (const sec of secs) { let r = 0, bt = 0; for (const k of sec.children) { r = Math.max(r, k.x + k.width); bt = Math.max(bt, k.y + k.height); } if (r + 80 > sec.width || bt + 80 > sec.height) sec.resizeWithoutConstraints(Math.max(sec.width, R(r + 80)), Math.max(sec.height, R(bt + 80))); }
+  for (const s of secs) { let r = 0, b = 0; for (const k of s.children) { r = Math.max(r, k.x + k.width); b = Math.max(b, k.y + k.height); } s.resizeWithoutConstraints(Math.max(R(r + 80), 400), R(b + 80)); }
   secs.sort((a, b) => a.x - b.x);
   for (let i = 1; i < secs.length; i++) { const want = secs[i - 1].x + secs[i - 1].width + 160; if (secs[i].x < want) secs[i].x = want; }
-  const inter = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
   const out = [];
-  for (const sec of secs) { const k = sec.children; for (let i = 0; i < k.length; i++) for (let j = i + 1; j < k.length; j++) { const a = BB(k[i]), c = BB(k[j]); if (a && c && inter(a, c)) out.push(`${sec.name}: ${k[i].name} x ${k[j].name}`); } }
-  report.overlaps01 = out.length ? out.slice(0, 12) : 'none';
+  for (const s of secs) { const k = s.children; for (let i = 0; i < k.length; i++) for (let j = i + 1; j < k.length; j++) { const a = BB(k[i]), b = BB(k[j]); if (a && b && inter(a, b)) out.push(`${s.name}: ${k[i].name} x ${k[j].name}`); } }
+  report.overlaps01 = out.length ? out : 'none';
   const so = []; for (let i = 0; i < secs.length; i++) for (let j = i + 1; j < secs.length; j++) if (inter(BB(secs[i]), BB(secs[j]))) so.push(secs[i].name + ' x ' + secs[j].name);
   report.sectionOverlaps = so.length ? so : 'none';
-});
-
-// kontrol
-await step('8 kontrol', async () => {
-  let broken = 0, links = 0;
-  for (const n of p02.findAll(n => n.reactions && n.reactions.length)) for (const r of n.reactions) for (const a of (r.actions || [])) if (a && a.type === 'NODE') { links++; if (!a.destinationId || !(await figma.getNodeByIdAsync(a.destinationId))) broken++; }
-  report.prototype = `02 bağlantı ${links}, kırık ${broken}`;
-  const ib = getSet('Icon button'); const g = ib.variantGroupProperties;
-  report.iconButtonProps = Object.keys(g).map(k => `${k}: ${g[k].values.join('/')}`);
+  // büyük boşluk taraması: aynı sütunda ardışık iki parça arası > 400
+  const gaps = [];
+  for (const s of secs) { const k = s.children.slice().sort((a, b) => a.y - b.y); for (let i = 1; i < k.length; i++) { const prev = k.slice(0, i).filter(p => p.x < k[i].x + k[i].width && p.x + p.width > k[i].x); if (!prev.length) continue; const bot = Math.max.apply(null, prev.map(p => p.y + p.height)); if (k[i].y - bot > 400) gaps.push(`${s.name}: ${k[i].name} üstünde ${R(k[i].y - bot)} px boşluk`); } }
+  report.bigGaps = gaps.length ? gaps : 'none';
 });
 return report;
