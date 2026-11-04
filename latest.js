@@ -1,92 +1,76 @@
-// step 303 · design review hızlı düzeltmeler: (1) değeri çözülmemiş bağlı renkleri yeniden bağla (My settings gri alt cümleleri) · (2) Message bubble'da yarı saydam beyaz meta metni (1.2 MB · PDF) opaklık 1 · (3) text/brand tonu #0a783a (yeni primitive, bg/brand ve icon/brand değişmez)
-const report = { done: [], errors: [], fixes: [] };
+// step 304 · salt okunur: Focus varyantı eklenecek 6 set (Button, Icon button, Filter chip, Checkbox, Switch, Link row) yapısı · border/focus kullanımı · Foundations not yeri. Hiçbir şey değiştirmez.
+const report = { done: [], errors: [] };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
-const hex = c => '#' + [c.r, c.g, c.b].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+const R = n => Math.round(n);
 const p01 = figma.root.children.find(p => /^01/.test(p.name));
 const p02 = figma.root.children.find(p => /^02/.test(p.name));
 await p01.loadAsync(); await p02.loadAsync();
-let vars = await figma.variables.getLocalVariablesAsync();
-let byId = new Map(vars.map(v => [v.id, v]));
-function resolve(v, d) {
-  const val = v.valuesByMode[Object.keys(v.valuesByMode)[0]];
-  if (val && val.type === 'VARIABLE_ALIAS' && (d || 0) < 6) { const t = byId.get(val.id); return t ? resolve(t, (d || 0) + 1) : null; }
-  return val;
-}
-const same = (a, b) => Math.abs(a.r - b.r) < 0.004 && Math.abs(a.g - b.g) < 0.004 && Math.abs(a.b - b.b) < 0.004;
-const lin = v => v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-const lum = c => 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
-const ratio = (a, b) => { const x = lum(a), y = lum(b); return Math.round((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) * 100) / 100; };
+const vars = await figma.variables.getLocalVariablesAsync();
+const vName = id => { const v = vars.find(x => x.id === id); return v ? v.name.replace('color/', '') : id; };
+const paint = n => { if (!('fills' in n) || n.fills === figma.mixed || !n.fills.length) return '-'; const p = n.fills[0]; return p.boundVariables && p.boundVariables.color ? vName(p.boundVariables.color.id) : p.type; };
+const stroke = n => { if (!('strokes' in n) || !n.strokes.length) return '-'; const p = n.strokes[0]; return `${p.boundVariables && p.boundVariables.color ? vName(p.boundVariables.color.id) : 'raw'} ${n.strokeWeight === figma.mixed ? 'mixed' : n.strokeWeight}${n.strokeAlign ? ' ' + n.strokeAlign : ''}`; };
+const rad = n => 'cornerRadius' in n ? (n.cornerRadius === figma.mixed ? 'mixed' : R(n.cornerRadius)) + (n.boundVariables && n.boundVariables.topLeftRadius ? '(' + vName(n.boundVariables.topLeftRadius.id) + ')' : '') : '-';
+const fx = n => 'effects' in n && n.effects.length ? n.effects.map(e => e.type).join('+') : '-';
 
-// (3) önce token: sonraki adımlar doğru değeri görsün
-await step('3 text/brand tonu', async () => {
-  const tb = vars.find(v => v.name === 'color/text/brand');
-  const raw = tb.valuesByMode[Object.keys(tb.valuesByMode)[0]];
-  const before = resolve(tb);
-  const target = { r: 10 / 255, g: 120 / 255, b: 58 / 255, a: 1 };
-  if (same(before, target)) { report.fixes.push('3 zaten #0a783a'); return; }
-  if (raw && raw.type === 'VARIABLE_ALIAS') {
-    const prim = byId.get(raw.id);
-    const col = await figma.variables.getVariableCollectionByIdAsync(prim.variableCollectionId);
-    const nm = /\d+$/.test(prim.name) ? prim.name.replace(/\d+$/, m => String(+m + 50)) : prim.name + '-text';
-    let nv = vars.find(v => v.name === nm && v.variableCollectionId === col.id);
-    if (!nv) { nv = figma.variables.createVariable(nm, col, 'COLOR'); for (const m of col.modes) nv.setValueForMode(m.modeId, target); }
-    for (const modeId of Object.keys(tb.valuesByMode)) tb.setValueForMode(modeId, figma.variables.createVariableAlias(nv));
-    report.fixes.push(`3 text/brand: ${prim.name} ${hex(before)} -> ${nm} #0a783a (${prim.name} yerinde kaldı)`);
-  } else {
-    for (const modeId of Object.keys(tb.valuesByMode)) tb.setValueForMode(modeId, target);
-    report.fixes.push(`3 text/brand: ${hex(before)} -> #0a783a (alias değildi, doğrudan değer)`);
-  }
-  vars = await figma.variables.getLocalVariablesAsync(); byId = new Map(vars.map(v => [v.id, v]));
-  const sub = resolve(vars.find(v => v.name === 'color/bg/subtle')), surf = resolve(vars.find(v => v.name === 'color/bg/surface')), nb = resolve(vars.find(v => v.name === 'color/text/brand'));
-  const bgb = resolve(vars.find(v => v.name === 'color/bg/brand'));
-  report.fixes.push(`3 kontrol: text/brand ${hex(nb)} · bg/subtle üstünde ${ratio(nb, sub)}:1 · beyazda ${ratio(nb, surf)}:1 · bg/brand değişmedi ${hex(bgb)}`);
-});
-
-// (1) bağlı ama çözülmemiş renkler (01 ve 02)
-await step('1 çözülmemiş bağlı renkler', async () => {
-  let fixed = 0, checked = 0; const ex = new Map();
-  for (const page of [p01, p02]) {
-    const nodes = page.findAll(n => n.type === 'TEXT' || n.type === 'FRAME' || n.type === 'RECTANGLE' || n.type === 'COMPONENT' || n.type === 'INSTANCE' || n.type === 'ELLIPSE');
-    for (const n of nodes) {
-      if (!('fills' in n) || n.fills === figma.mixed || !n.fills.length) continue;
-      let changed = false;
-      const fills = n.fills.map(p => {
-        if (p.type !== 'SOLID' || !p.boundVariables || !p.boundVariables.color) return p;
-        checked++;
-        const v = byId.get(p.boundVariables.color.id); if (!v) return p;
-        const want = resolve(v); if (!want || same(p.color, want)) return p;
-        changed = true;
-        const k = `${v.name} ${hex(p.color)} -> ${hex(want)}`; ex.set(k, (ex.get(k) || 0) + 1);
-        const np = figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: want.r, g: want.g, b: want.b }, opacity: p.opacity === undefined ? 1 : p.opacity, visible: p.visible !== false }, 'color', v);
-        return np;
-      });
-      if (changed) { n.fills = fills; fixed++; }
+const NAMES = ['Button', 'Icon button', 'Filter chip', 'Checkbox', 'Switch', 'Link row'];
+await step('sets', async () => {
+  report.sets = {};
+  for (const nm of NAMES) {
+    const s = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === nm);
+    if (!s) { report.sets[nm] = 'YOK'; continue; }
+    const g = s.variantGroupProperties || {};
+    const defs = s.componentPropertyDefinitions || {};
+    const info = {
+      section: s.parent ? s.parent.name : '-',
+      box: `${R(s.x)},${R(s.y)} ${R(s.width)}x${R(s.height)} layout ${s.layoutMode}`,
+      variants: s.children.length,
+      props: Object.keys(g).map(k => `${k}: ${g[k].values.join('/')}`),
+      otherProps: Object.keys(defs).filter(k => defs[k].type !== 'VARIANT').map(k => `${k} (${defs[k].type})`),
+      sample: []
+    };
+    const seen = new Set();
+    for (const c of s.children) {
+      const st = c.name.split(', ').filter(x => !/^State=/.test(x)).join(', ');
+      if (seen.has(st)) continue; seen.add(st);
+      const d = c.name.indexOf('State=Default') >= 0 || c.name.indexOf('State') < 0 ? c : null;
+      const base = d || c;
+      info.sample.push(`${base.name} @${R(base.x)},${R(base.y)} ${R(base.width)}x${R(base.height)} · layout ${base.layoutMode} clip ${base.clipsContent} · fill ${paint(base)} · stroke ${stroke(base)} · rad ${rad(base)} · fx ${fx(base)} · kids [${base.children.map(k => k.name + ':' + k.type).slice(0, 5).join(', ')}]`);
+      if (info.sample.length >= 6) break;
     }
+    const hover = s.children.find(c => /State=Hover/.test(c.name));
+    if (hover) info.hover = `${hover.name} · fill ${paint(hover)} · stroke ${stroke(hover)} · fx ${fx(hover)}`;
+    const dis = s.children.find(c => /State=Disabled/.test(c.name));
+    if (dis) info.disabled = `${dis.name} · opacity ${dis.opacity} · fill ${paint(dis)}`;
+    const inst = p02.findAll(n => n.type === 'INSTANCE' && n.name.length < 80).length;
+    report.sets[nm] = info;
   }
-  report.fixes.push(`1 bağlı boya tarandı ${checked}, düzeltilen node ${fixed}`);
-  report.unresolvedByVar = [...ex.entries()].map(([k, c]) => `${c}x ${k}`);
 });
 
-// (2) Message bubble meta opaklığı
-await step('2 bubble meta opaklık', async () => {
-  const inv = vars.find(v => v.name === 'color/text/inverse');
-  const isInv = n => n.fills !== figma.mixed && n.fills.length && n.fills[0].boundVariables && n.fills[0].boundVariables.color && n.fills[0].boundVariables.color.id === inv.id;
-  const sets = p01.findAll(n => (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') && /^Message bubble/.test(n.name));
-  let comp = 0; const seen = [];
-  for (const s of sets) for (const t of s.findAll(n => n.type === 'TEXT' && n.opacity < 0.99 && n.opacity > 0.3 && isInv(n))) { seen.push(`${s.name} › "${t.characters.slice(0, 16)}" ${Math.round(t.opacity * 100)}%`); t.opacity = 1; comp++; }
-  let inst = 0;
-  for (const t of p02.findAll(n => n.type === 'TEXT' && n.opacity < 0.99 && n.opacity > 0.3 && isInv(n))) {
-    let x = t.parent, inBubble = false; while (x && x.type !== 'SECTION') { if (x.name === 'Bubble' || /^Message bubble/.test(x.name)) { inBubble = true; break; } x = x.parent; }
-    if (inBubble) { t.opacity = 1; inst++; }
-  }
-  const left = p02.findAll(n => n.type === 'TEXT' && /MB · PDF/.test(n.characters) && n.opacity < 0.99).length;
-  report.fixes.push(`2 component metni ${comp}, sayfa override ${inst}, kalan yarı saydam "MB · PDF" ${left} (0 olmalı)`);
-  report.bubbleMeta = seen.slice(0, 8);
+await step('form field focus', async () => {
+  const s = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Form field');
+  const f = s.children.find(c => /State=Focus/.test(c.name) && /Type=Text/.test(c.name));
+  const field = f.findOne(n => n.name === 'Field');
+  report.formFieldFocus = `${f.name} · Field stroke ${stroke(field)} · rad ${rad(field)} · fx ${fx(field)}`;
 });
 
-// kontrol: My settings alt cümleleri
-await step('kontrol', async () => {
-  const s = p02.findAll(n => n.type === 'FRAME' && /^Settings \/ My settings · (Desktop|Mobile)$/.test(n.name));
-  report.settingsGray = s.map(f => `${f.name}: ${f.findAll(n => n.type === 'TEXT' && n.fills !== figma.mixed && n.fills.length && n.fills[0].color && hex(n.fills[0].color) === '#808080').length} gri metin (0 olmalı)`);
+await step('border/focus kullanımı', async () => {
+  const fv = vars.find(v => v.name === 'color/border/focus');
+  const use = new Map();
+  for (const page of [p01, p02]) for (const n of page.findAll(n => ('strokes' in n) || ('fills' in n))) {
+    const hit = (arr) => arr && arr !== figma.mixed && arr.some(p => p.boundVariables && p.boundVariables.color && p.boundVariables.color.id === fv.id);
+    if (hit(n.strokes) || hit(n.fills)) { let x = n, path = []; while (x && x.type !== 'PAGE' && path.length < 3) { path.unshift(x.name); x = x.parent; } const k = page.name.slice(0, 2) + ' ' + path.join(' > '); use.set(k, (use.get(k) || 0) + 1); }
+  }
+  report.focusUse = [...use.entries()].slice(0, 20).map(([k, c]) => `${c}x ${k}`);
+  report.focusUseTotal = [...use.values()].reduce((a, b) => a + b, 0);
+  const col = await figma.variables.getVariableCollectionByIdAsync(fv.variableCollectionId);
+  const raw = fv.valuesByMode[Object.keys(fv.valuesByMode)[0]];
+  report.focusVar = `${fv.name} koleksiyon ${col.name} · ${raw && raw.type === 'VARIABLE_ALIAS' ? 'alias -> ' + (vars.find(v => v.id === raw.id) || {}).name : 'doğrudan'}`;
+  report.inverseVarExists = !!vars.find(v => v.name === 'color/border/focus-inverse');
+});
+
+await step('Foundations notları', async () => {
+  const notes = p01.findAll(n => n.type === 'TEXT' && /(developer|for the developer|Note)/i.test(n.characters)).slice(0, 6);
+  report.noteSamples = notes.map(t => `${t.parent ? t.parent.name : '-'} › "${t.characters.slice(0, 50)}" style ${t.textStyleId && t.textStyleId !== figma.mixed ? 'var' : 'yok'} fill ${paint(t)}`);
+  report.sections01 = p01.children.filter(n => n.type === 'SECTION').map(s => `${s.name} ${R(s.x)},${R(s.y)} ${R(s.width)}x${R(s.height)}`);
 });
 return report;
