@@ -1,4 +1,4 @@
-// step 285 · Account menu "Shortlists" row (Role=Other, Desktop + Mobile; Menu icon star) + Phase 5 row components in Section 10: Contact row, Notification row, Shortlist row (Desktop/Mobile); nothing placed on 02 yet
+// step 285 (fixed button label + cleanup of leftovers) · Account menu "Shortlists" row (Role=Other, Desktop + Mobile; Menu icon star) + Phase 5 row components in Section 10: Contact row, Notification row, Shortlist row (Desktop/Mobile); nothing placed on 02 yet
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const pageOf = re => figma.root.children.find(p => re.test(p.name));
@@ -65,6 +65,7 @@ await step('Account menu: Shortlists row', async () => {
 const SEC = '10 · Contacts & settings';
 await step('Row components (Contact row, Notification row, Shortlist row)', async () => {
   const sec = p01.findOne(n => n.type === 'SECTION' && n.name === SEC); if (!sec) throw new Error('Section 10 missing: run step 284');
+  for (const o of p01.children.slice()) { if ((o.type === 'COMPONENT' && /^Device=.*(Kind|State)=/.test(o.name)) || (o.type === 'FRAME' && /^(Actions|Head|Text|Key facts|Fact|Value)$/.test(o.name))) o.remove(); }
   for (const nm of ['Contact row', 'Notification row', 'Shortlist row']) for (const o of sec.children.filter(n => n.name === nm || n.name === nm + ' note').slice()) o.remove();
 
   const personSet = findSet('Person row'), eventSet = findSet('Event row'), btnSet = findSet('Button'), ibSet = findSet('Icon button'), stSet = findSet('Application status'), flagSet = findSet('Flag');
@@ -77,12 +78,12 @@ await step('Row components (Contact row, Notification row, Shortlist row)', asyn
 
   async function T(src, chars, name, colorVar) { const t = src.clone(); t.name = name; await setText(t, chars); t.textAutoResize = 'WIDTH_AND_HEIGHT'; if (colorVar) t.fills = [P(V(colorVar))]; return t; }
   function fr(name, mode, gap) { const f = figma.createFrame(); f.name = name; f.fills = []; f.clipsContent = false; f.layoutMode = mode; f.primaryAxisSizingMode = 'AUTO'; f.counterAxisSizingMode = 'AUTO'; if (gap) GAP(f, gap); return f; }
-  function btn(style, label) {
+  async function btn(style, label) {
     const v = btnSet.children.find(x => x.name === 'Style=' + style + ', State=Default'); if (!v) throw new Error('Button variant ' + style);
     const i = v.createInstance(); const props = i.componentProperties; const props2 = {};
     for (const k of Object.keys(props)) { if (/^Label#/.test(k)) props2[k] = label; if (/^Icon#/.test(k)) props2[k] = false; }
     i.setProperties(props2); i.name = 'Button · ' + label;
-    const lt = i.findOne(n => n.type === 'TEXT'); if (lt && lt.characters !== label) throw new Error('button label did not apply: ' + lt.characters);
+    const lt = i.findOne(n => n.type === 'TEXT'); if (!lt) throw new Error('button has no text'); await setText(lt, label);
     return i;
   }
   function ibtn(icon) { const v = ibSet.children.find(x => x.name === 'Icon=' + icon); if (!v) throw new Error('Icon button ' + icon); const i = v.createInstance(); i.name = 'Icon button · ' + icon; return i; }
@@ -115,9 +116,9 @@ await step('Row components (Contact row, Notification row, Shortlist row)', asyn
     if (mob) { c.appendChild(head); head.layoutSizingHorizontal = 'FILL'; } 
     text.layoutSizingHorizontal = 'FILL';
     const acts = fr('Actions', 'HORIZONTAL', 'spacing/xs'); acts.counterAxisAlignItems = 'CENTER';
-    if (kind === 'Connected') { acts.appendChild(btn('Secondary', 'Message')); acts.appendChild(ibtn('More')); }
-    else if (kind === 'Received') { acts.appendChild(btn('Primary', 'Accept')); acts.appendChild(btn('Secondary', 'Decline')); }
-    else { acts.appendChild(status('Pending')); acts.appendChild(btn('Subtle', 'Cancel request')); }
+    if (kind === 'Connected') { acts.appendChild(await btn('Secondary', 'Message')); acts.appendChild(ibtn('More')); }
+    else if (kind === 'Received') { acts.appendChild(await btn('Primary', 'Accept')); acts.appendChild(await btn('Secondary', 'Decline')); }
+    else { acts.appendChild(status('Pending')); acts.appendChild(await btn('Subtle', 'Cancel request')); }
     c.appendChild(acts);
     if (mob) { acts.layoutSizingHorizontal = 'FILL'; if (kind !== 'Sent') for (const k of acts.children) if (k.name !== 'Icon button · More') k.layoutSizingHorizontal = 'FILL'; }
     contacts.push(c);
@@ -135,7 +136,7 @@ await step('Row components (Contact row, Notification row, Shortlist row)', asyn
     const b = await T(srcBody, body, 'Body'); text.appendChild(b); b.layoutSizingHorizontal = 'FILL';
     text.appendChild(await T(srcMeta, '2 hours ago', 'Time'));
     const acts = fr('Actions', 'HORIZONTAL', 'spacing/xs'); acts.counterAxisAlignItems = 'CENTER';
-    if (kind === 'Request') { acts.appendChild(btn('Primary', 'Accept')); acts.appendChild(btn('Secondary', 'Decline')); } else acts.appendChild(status('Accepted'));
+    if (kind === 'Request') { acts.appendChild(await btn('Primary', 'Accept')); acts.appendChild(await btn('Secondary', 'Decline')); } else acts.appendChild(status('Accepted'));
     text.appendChild(acts);
     text.itemSpacing = 0; GAP(text, 'spacing/2xs'); acts.layoutPositioning = 'AUTO';
     if (un === 'True') { const d = figma.createEllipse(); d.name = 'Unread dot'; d.resize(8, 8); d.fills = [P(V('color/bg/brand'))]; c.appendChild(d); }
@@ -161,7 +162,7 @@ await step('Row components (Contact row, Notification row, Shortlist row)', asyn
     await cell('Contract until', await T(srcBody, 'Jun 2027', 'Value'), 112);
     c.appendChild(facts);
     const acts = fr('Actions', 'HORIZONTAL', 'spacing/xs'); acts.counterAxisAlignItems = 'CENTER';
-    acts.appendChild(btn('Secondary', 'Message')); acts.appendChild(btn('Subtle', 'Remove'));
+    acts.appendChild(await btn('Secondary', 'Message')); acts.appendChild(await btn('Subtle', 'Remove'));
     c.appendChild(acts);
     if (mob) { facts.layoutSizingHorizontal = 'FILL'; acts.layoutSizingHorizontal = 'FILL'; for (const k of acts.children) k.layoutSizingHorizontal = 'FILL'; }
     shorts.push(c);
