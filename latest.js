@@ -1,4 +1,4 @@
-// step 300 · (1) Mobile Shortlists kolonları: Age / Contract until etiketi + Fact HUG, Nationality FILL · (2) salt okunur: 02 · Website tüm ekranlarda metin-metin çakışması
+// step 300 · (0) 'My events' katmanları nerede duruyor (salt okunur) · (1) Mobile Shortlists kolonları: Age / Contract until etiketi + Fact HUG, Nationality FILL · (2) salt okunur: 02 · Website tüm ekranlarda metin-metin çakışması
 const report = { done: [], errors: [], fixes: [], textOverlaps: [] };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const page = figma.root.children.find(p => /^02/.test(p.name));
@@ -57,5 +57,25 @@ await step('T text overlaps', async () => {
   }
   report.textOverlaps = [...groups.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 60).map(([k, g]) => `${g.n}x ${k} · ${g.ex}`);
   report.textOverlapGroups = groups.size;
+});
+
+// ---------- My events katmanları nerede? (salt okunur) ----------
+report.myEvents = [];
+await step('M My events katman konumu', async () => {
+  const chain = n => { const a = []; let x = n.parent; while (x) { a.unshift(`${x.type === 'PAGE' ? 'PAGE' : x.type}:${(x.name || '').slice(0, 24)}`); x = x.parent; } return a.join(' > '); };
+  for (const pg of figma.root.children) {
+    await pg.loadAsync();
+    const hits = pg.findAll(n => /^Events \/ My events/.test(n.name) && (n.type === 'FRAME' || n.type === 'COMPONENT' || n.type === 'GROUP'));
+    for (const n of hits) {
+      const b = BB(n); const par = n.parent;
+      const pb = par && par.type === 'SECTION' ? BB(par) : null;
+      const inside = pb ? (b.x >= pb.x && b.y >= pb.y && b.x + b.width <= pb.x + pb.width && b.y + b.height <= pb.y + pb.height) : 'n/a';
+      report.myEvents.push(`[${pg.name}] "${n.name}" ${R(b.width)}x${R(b.height)} @${R(b.x)},${R(b.y)} · içinde: ${chain(n)} · ebeveyn sınırı içinde: ${inside}`);
+    }
+  }
+  const web = page.children.find(n => n.type === 'SECTION' && n.name === 'Web'), wb = BB(web);
+  report.myEvents.push(`Web Section: @${R(wb.x)},${R(wb.y)} ${R(wb.width)}x${R(wb.height)}`);
+  const stray = page.children.filter(n => !(n.type === 'SECTION' && (n.name === 'Web' || n.name === 'Mobile')));
+  report.myEvents.push(`02 sayfa kökünde Web/Mobile dışı çocuk sayısı: ${stray.length}` + (stray.length ? ' · ' + stray.slice(0, 12).map(n => `${n.type} "${(n.name || '').slice(0, 30)}" @${R(BB(n).x)},${R(BB(n).y)}`).join(' ; ') : ''));
 });
 return report;
