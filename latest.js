@@ -1,5 +1,5 @@
-// step 295 · 4 net taşma düzeltmesi (Mobile Profile actions sarma, Edit about alan HUG, Wrong email ekran HUG, My events Meta kısalt) + 4 belirsiz yer için salt okunur döküm
-const report = { done: [], errors: [], fixes: [], moved: [], overlapsAfter: [], dump: [] };
+// step 296 · 4 taşma düzeltmesi: Calendar Month grid karta sığdır, Mobile Edit career "Remove this club" -> "Remove", Mobile Add to contacts başlığı sar, Mobile Shortlists kolon genişlikleri (Age/Contract sabit, Nationality esnek)
+const report = { done: [], errors: [], fixes: [], moved: [], overlapsAfter: [] };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const page = figma.root.children.find(p => /^02/.test(p.name));
 await page.loadAsync();
@@ -11,52 +11,75 @@ const sub = (p, s) => { const sec = plat(p).children.find(x => x.type === 'SECTI
 const screensOf = sec => sec.children.filter(c => c.type === 'FRAME' && !/^Flow ·/.test(c.name));
 const scr = (p, s, name) => { const x = screensOf(sub(p, s)).find(c => c.name === name); if (!x) throw new Error('ekran yok: ' + name); return x; };
 const rightOver = (n, p) => R(BB(n).x + BB(n).width - (BB(p).x + BB(p).width));
-const desc = n => `${n.type} "${(n.name || '').slice(0, 30)}" ${R(n.width)}x${R(n.height)} @${R(n.x)},${R(n.y)}${n.layoutMode && n.layoutMode !== 'NONE' ? ` L=${n.layoutMode}` : ''} sH=${n.layoutSizingHorizontal || '-'} sV=${n.layoutSizingVertical || '-'}${'paddingLeft' in n ? ` pad[L${n.paddingLeft} R${n.paddingRight}]` : ''}${n.layoutPositioning === 'ABSOLUTE' ? ' ABS' : ''}${'counterAxisAlignItems' in n && n.layoutMode !== 'NONE' ? ` cA=${n.counterAxisAlignItems} pA=${n.primaryAxisAlignItems}` : ''}`;
 
-// ---------- düzeltmeler ----------
-await step('F1 Mobile Own profile · Profile actions sar', async () => {
+await step('G1 Calendar · Month grid karta sığdır', async () => {
+  const s = scr('Web', 'Home page · calendar view', 'Home / Main / Calendar view · Desktop');
+  const cal = s.findOne(n => n.name === 'Calendar' && n.parent && n.parent.name === 'Upcoming events');
+  const grid = cal.findOne(n => n.name === 'Month grid');
+  const w = n => R(n.width);
+  const before = `grid ${w(grid)}, satırlar [${grid.children.map(w).join(',')}], ilk satır hücreleri [${('children' in grid.children[1] ? grid.children[1].children.map(w) : []).join(',')}], Calendar yükseklik ${R(cal.height)}, sağ taşma ${rightOver(grid, cal)}`;
+  grid.layoutSizingHorizontal = 'FILL';
+  for (const row of grid.children) {
+    row.layoutSizingHorizontal = 'FILL';
+    if ('children' in row && row.layoutMode === 'HORIZONTAL') for (const c of row.children) c.layoutSizingHorizontal = 'FILL';
+  }
+  report.fixes.push(`G1 ${before} -> grid ${w(grid)}, satırlar [${grid.children.map(w).join(',')}], ilk satır hücreleri [${('children' in grid.children[1] ? grid.children[1].children.map(w) : []).join(',')}], Calendar yükseklik ${R(cal.height)}, sağ taşma ${rightOver(grid, cal)}`);
+});
+
+await step('G2 Mobile Edit career · Remove metnini kısalt', async () => {
   for (const s of screensOf(sub('Mobile', 'Own profile'))) {
-    const nodes = s.findAll(n => n.name === 'Profile actions' && n.parent && n.parent.name === 'Hero · player identity' && n.visible !== false);
-    for (const n of nodes) {
-      const p = n.parent, o = rightOver(n, p); if (o <= 4) continue;
-      const before = `${R(n.width)}x${R(n.height)}, hero ${R(p.height)}, ekran ${R(s.height)}`;
-      n.layoutWrap = 'WRAP'; n.layoutSizingHorizontal = 'FILL'; n.counterAxisSpacing = n.itemSpacing;
-      report.fixes.push(`F1 ${s.name}: ${before} -> ${R(n.width)}x${R(n.height)}, hero ${R(p.height)}, ekran ${R(s.height)}, sağ taşma ${rightOver(n, p)}`);
-    }
-  }
-});
-for (const [pn, dev] of [['Web', 'Desktop'], ['Mobile', 'Mobile']]) await step('F2 Edit about alanı HUG · ' + dev, async () => {
-  const s = scr(pn, 'Own profile', `Profiles / Player / Own profile / Edit about · ${dev}`);
-  const f = s.findOne(n => n.name === 'Field' && n.parent && /About you/.test(n.parent.name));
-  if (!f) throw new Error('Field bulunamadı');
-  const v = f.findOne(n => n.name === 'Value');
-  const before = `Field ${R(f.height)}, Value ${R(v.height)}, ekran ${R(s.height)}`;
-  f.layoutSizingVertical = 'HUG';
-  report.fixes.push(`F2 ${dev}: ${before} -> Field ${R(f.height)}, Value ${R(v.height)}, ekran ${R(s.height)}`);
-});
-await step('F3 Wrong email ekranı HUG', async () => {
-  const s = scr('Web', 'Log in', 'Log in / Wrong email · Desktop');
-  const ft = s.findOne(n => n.name === 'Footer' && n.parent === s);
-  const before = `ekran ${R(s.height)}, footer alt taşma ${R(BB(ft).y + BB(ft).height - (BB(s).y + BB(s).height))}`;
-  s.primaryAxisSizingMode = 'AUTO';
-  report.fixes.push(`F3 ${before} -> ekran ${R(s.height)}, footer alt taşma ${R(BB(ft).y + BB(ft).height - (BB(s).y + BB(s).height))}`);
-});
-await step('F4 My events · Meta kısalt (Mobile)', async () => {
-  for (const s of screensOf(sub('Mobile', 'Events'))) {
-    for (const m of s.findAll(n => n.name === 'Meta' && n.parent && n.parent.name === 'Details' && n.visible !== false)) {
-      const o = rightOver(m, m.parent); if (o <= 4) continue;
-      const before = `${R(m.width)} / Details ${R(m.parent.width)}`;
-      m.layoutSizingHorizontal = 'FILL';
-      const last = m.children[m.children.length - 1];
-      let t = last.type === 'TEXT' ? last : last.findOne(x => x.type === 'TEXT');
-      if (last.type !== 'TEXT') last.layoutSizingHorizontal = 'FILL';
-      t.textAutoResize = 'HEIGHT'; t.layoutSizingHorizontal = 'FILL'; t.textTruncation = 'ENDING'; t.maxLines = 1;
-      report.fixes.push(`F4 ${s.name} · "${t.characters.slice(0, 28)}": Meta ${before} -> ${R(m.width)}, sağ taşma ${rightOver(m, m.parent)}, Meta yükseklik ${R(m.height)}`);
+    for (const e of s.findAll(n => n.name === 'Edit actions' && n.visible !== false)) {
+      const b = e.children.find(c => c.name === 'Buttons'), t = e.children.find(c => c.type === 'TEXT');
+      if (!b || !t || rightOver(b, e) <= 4) continue;
+      const before = `"${t.characters}" ${R(t.width)}, taşma ${rightOver(b, e)}`;
+      await figma.loadFontAsync(t.fontName);
+      t.characters = 'Remove';
+      report.fixes.push(`G2 ${s.name}: ${before} -> "${t.characters}" ${R(t.width)}, taşma ${rightOver(b, e)}`);
     }
   }
 });
 
-// ---------- Section / platform uyumu ----------
+await step('G3 Mobile Add to contacts · başlığı sar', async () => {
+  for (const s of screensOf(sub('Mobile', 'Messenger'))) {
+    for (const t of s.findAll(n => n.name === 'Title' && n.type === 'TEXT' && n.parent && n.parent.name === 'Text' && n.parent.parent && n.parent.parent.name === 'Composer')) {
+      if (rightOver(t, t.parent) <= 4) continue;
+      const comp = t.parent.parent, before = `başlık ${R(t.width)}x${R(t.height)}, Composer ${R(comp.height)}`;
+      t.textAutoResize = 'HEIGHT'; t.layoutSizingHorizontal = 'FILL';
+      const btn = comp.children.find(c => /^Button/.test(c.name));
+      const ov = btn ? inter(BB(t), BB(btn)) : null;
+      report.fixes.push(`G3 ${s.name}: ${before} -> başlık ${R(t.width)}x${R(t.height)}, Composer ${R(comp.height)}, düğmeyle kesişim ${ov ? ov : 'yok'}`);
+    }
+  }
+});
+
+await step('G4 Mobile Shortlists · kolon genişlikleri', async () => {
+  const s = scr('Mobile', 'Shortlists', 'Shortlists / Shortlists · Mobile');
+  let fixed = 0, still = 0;
+  for (const kf of s.findAll(n => n.name === 'Key facts' && n.visible !== false)) {
+    const facts = kf.children.filter(c => c.name === 'Fact');
+    if (facts.length !== 3) { report.errors.push('G4 Key facts 3 Fact değil: ' + facts.length); continue; }
+    for (const f of facts) {
+      const lab = f.findOne(n => n.type === 'TEXT' && n.name === 'Label'); const txt = lab ? lab.characters : '';
+      const fw = /contract/i.test(txt) ? 84 : /age/i.test(txt) ? 56 : 0;
+      if (fw) { f.resize(fw, f.height); f.layoutSizingHorizontal = 'FIXED'; f.layoutSizingVertical = 'HUG'; }
+    }
+    for (const f of facts) {
+      const v = f.findOne(n => n.name === 'Value'); if (!v) continue;
+      if (rightOver(v, f) > 4) {
+        // yedek: kalan taşmayı kısalt
+        v.layoutSizingHorizontal = 'FILL';
+        const t = v.type === 'TEXT' ? v : v.findOne(x => x.type === 'TEXT');
+        t.textAutoResize = 'HEIGHT'; t.layoutSizingHorizontal = 'FILL'; t.textTruncation = 'ENDING'; t.maxLines = 1;
+        still++;
+      }
+    }
+    fixed++;
+  }
+  const left = s.findAll(n => n.name === 'Value' && n.parent && n.parent.name === 'Fact' && n.visible !== false && rightOver(n, n.parent) > 4).length;
+  const sizes = s.findAll(n => n.name === 'Key facts' && n.visible !== false).slice(0, 2).map(kf => kf.children.filter(c => c.name === 'Fact').map(f => R(f.width)).join('/')).join(' ; ');
+  report.fixes.push(`G4 Key facts ${fixed}, yedek kısaltma gereken ${still}, kalan taşma ${left}, Fact genişlikleri (ilk 2 satır) ${sizes}`);
+});
+
 await step('settle Sections', async () => {
   for (const pn of ['Web', 'Mobile']) {
     const p = plat(pn), subs = p.children.filter(n => n.type === 'SECTION');
@@ -80,30 +103,5 @@ await step('check overlaps after', async () => {
     for (const sec of subs) { const sc = screensOf(sec); for (let i = 0; i < sc.length; i++) for (let j = i + 1; j < sc.length; j++) { const o = inter(BB(sc[i]), BB(sc[j])); if (o) report.overlapsAfter.push(`${p.name} ${sec.name}: ${sc[i].name} x ${sc[j].name} ${o}`); } }
   }
   if (!report.overlapsAfter.length) report.overlapsAfter.push('none');
-});
-
-// ---------- salt okunur döküm ----------
-await step('D1 Calendar Month grid', async () => {
-  const s = scr('Web', 'Home page · calendar view', 'Home / Main / Calendar view · Desktop');
-  const c = s.findOne(n => n.name === 'Calendar'); const g = c.findOne(n => n.name === 'Month grid');
-  report.dump.push('D1 Calendar: ' + desc(c) + ' | parent: ' + desc(c.parent) + ' | Month grid: ' + desc(g) + ' | Calendar çocukları: ' + c.children.map(desc).join(' ; '));
-  report.dump.push('D1 ebeveyn çocukları: ' + c.parent.children.map(desc).join(' ; '));
-});
-await step('D2 Edit career · Edit actions', async () => {
-  const s = scr('Mobile', 'Own profile', 'Profiles / Player / Own profile / Edit career · Mobile');
-  const e = s.findOne(n => n.name === 'Edit actions');
-  report.dump.push('D2 Edit actions: ' + desc(e) + ` gap=${e.itemSpacing} | parent: ` + desc(e.parent) + ' | çocuklar: ' + e.children.map(desc).join(' ; ') + ' | Buttons çocukları: ' + (e.children[e.children.length - 1].children || []).map(desc).join(' ; '));
-});
-await step('D3 Add to contacts · Composer', async () => {
-  const s = scr('Mobile', 'Messenger', 'Messenger / Add to contacts · Mobile');
-  const c = s.findOne(n => n.name === 'Composer');
-  report.dump.push('D3 Composer: ' + desc(c) + ' | çocuklar: ' + c.children.map(desc).join(' ; '));
-  for (const k of c.children) if ('children' in k) report.dump.push('D3 ' + k.name + ' altı: ' + k.children.map(x => desc(x) + (x.type === 'TEXT' ? ` "${x.characters.slice(0, 40)}"` : '')).join(' ; '));
-});
-await step('D4 Shortlists · taşan Fact değeri', async () => {
-  const s = scr('Mobile', 'Shortlists', 'Shortlists / Shortlists · Mobile');
-  const bad = s.findAll(n => n.name === 'Value' && n.parent && n.parent.name === 'Fact' && n.visible !== false && rightOver(n, n.parent) > 4);
-  report.dump.push(`D4 taşan Fact değeri sayısı: ${bad.length}`);
-  for (const n of bad.slice(0, 3)) report.dump.push('D4 ' + desc(n) + ` taşma ${rightOver(n, n.parent)} | Fact: ` + desc(n.parent) + ' | Key facts: ' + desc(n.parent.parent) + ' | Fact çocukları: ' + n.parent.children.map(desc).join(' ; ') + ' | ' + (n.type === 'TEXT' ? `"${n.characters}"` : ''));
 });
 return report;
