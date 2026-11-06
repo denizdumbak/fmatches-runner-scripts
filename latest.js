@@ -1,4 +1,4 @@
-// step 327 · arama sonuçları masaüstü ekranları (6): All · Players · Clubs · Facilities · Events · No results. Shortlists sayfasından türetilir; yeni Section "Search results" (Web, Stadium card'ın altı).
+// step 328 · (327'nin düzeltmesi: newCard'da ebeveynsiz FILL hatası) arama sonuçları masaüstü ekranları (6): All · Players · Clubs · Facilities · Events · No results. Shortlists sayfasından türetilir; yeni Section "Search results" (Web, Stadium card'ın altı).
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const R = Math.round;
@@ -92,7 +92,7 @@ async function filterPanel(kind) {
   return panel;
 }
 
-function newCard() { const c = listCardSrc.clone(); for (const k of c.children.slice()) k.remove(); c.layoutSizingHorizontal = 'FILL'; c.primaryAxisSizingMode = 'AUTO'; return c; }
+function newCard() { const c = listCardSrc.clone(); for (const k of c.children.slice()) k.remove(); c.primaryAxisSizingMode = 'AUTO'; return c; }
 function addRow(card, node, last) { card.appendChild(node); node.layoutSizingHorizontal = 'FILL'; if (!last) { const d = dividerSrc.clone(); card.appendChild(d); d.layoutSizingHorizontal = 'FILL'; } }
 
 const PLAYERS = shortRows.map((r, i) => ({ name: tn(r, 'Name').characters, meta: tn(r, 'Meta').characters, age: (r.findAll(n => n.type === 'TEXT' && n.name === 'Value')[0] || { characters: '' }).characters, row: r, action: i === 3 ? 'Add to contacts' : 'Message' }));
