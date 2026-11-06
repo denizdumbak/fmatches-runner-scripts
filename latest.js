@@ -1,50 +1,51 @@
-// step 318 · stadyum kartı düzeltmeleri: Role satırındaki ikinci metin ("Name in home country…") gizlenir, Tenants bayrakları ülkeye göre (varyant seçenekleri raporlanır), hero butonundaki ikon özelliği tipi raporlanır
+// step 319 · stadyum kartı: "Verified profile" rozeti gizlenir, Role satırı "Home of ..." olur (tekrar eden "Stadium" gider), Flag setine Germany varyantı eklenir (yatay üç şerit) ve Tenants bayrakları Germany olur
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
+const R = Math.round;
 const p01 = figma.root.children.find(p => /^01/.test(p.name));
 const p02 = figma.root.children.find(p => /^02/.test(p.name));
 await p01.loadAsync(); await p02.loadAsync();
 const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web');
 const sec = web.children.find(n => n.type === 'SECTION' && n.name === 'Stadium card');
 const fr = sec.children.find(n => n.type === 'FRAME' && n.name === 'Facilities / Stadium card · Desktop');
+async function setText(t, str) { for (const f of t.getRangeAllFontNames(0, Math.max(t.characters.length, 1))) await figma.loadFontAsync(f); t.characters = str; }
 
-await step('A role text', async () => {
-  const role = fr.findOne(n => n.name === 'Role');
-  const rt = role.findAll(n => n.type === 'TEXT');
-  rt.forEach((t, i) => { if (i >= 1) t.visible = false; });
-  report.info.roleTexts = rt.map(t => `${t.visible ? 'on' : 'off'}:${t.characters}`);
+await step('A badge + role', async () => {
   const nr = fr.findOne(n => n.name === 'Name and role');
-  report.info.nameAndRoleTexts = nr.findAll(n => n.type === 'TEXT' && n.visible !== false).map(t => t.characters);
+  const vt = nr.findAll(n => n.type === 'TEXT').find(t => t.characters === 'Verified profile');
+  if (vt) { let a = vt; while (a.parent && a.parent !== nr && !/First name row|Player name/.test(a.parent.name)) a = a.parent; a.visible = false; report.info.hidBadge = a.name; } else report.info.hidBadge = 'bulunamadı';
+  const role = fr.findOne(n => n.name === 'Role');
+  const t = role.findAll(n => n.type === 'TEXT' && n.visible !== false)[0];
+  await setText(t, 'Home of Spreeufer FC and Nordpark SC');
+  report.info.nameAndRoleVisible = nr.findAll(n => n.type === 'TEXT' && n.visible !== false).map(x => x.characters);
 });
 
-await step('B flags', async () => {
+let flagSet;
+await step('B Germany flag variant', async () => {
+  flagSet = null;
+  (function w(n) { if (flagSet) return; if (n.type === 'COMPONENT_SET' && n.name === 'Flag') { flagSet = n; return; } if ('children' in n) for (const k of n.children) w(k); })(p01);
+  const existing = flagSet.children.find(c => /Germany/.test(c.name));
+  if (existing) { report.info.germany = 'zaten var'; return; }
+  const src = flagSet.children.find(c => /France/.test(c.name));
+  report.info.sourceVariant = `${src.name} ${R(src.width)}x${R(src.height)} kids=${src.children.map(c => c.type + ':' + c.name).join(',')}`;
+  const v = src.clone(); flagSet.appendChild(v); v.name = 'Country=Germany';
+  for (const k of v.children.slice()) k.remove();
+  const h = v.height / 3, cols = [{ r: 0, g: 0, b: 0 }, { r: 0.8667, g: 0, b: 0 }, { r: 1, g: 0.8078, b: 0 }];
+  cols.forEach((c, i) => { const r = figma.createRectangle(); v.appendChild(r); r.name = 'Stripe ' + (i + 1); r.resize(v.width, h); r.x = 0; r.y = i * h; r.fills = [{ type: 'SOLID', color: c }]; r.constraints = { horizontal: 'STRETCH', vertical: 'SCALE' }; });
+  const last = flagSet.children.filter(c => c !== v).sort((a, b) => (a.x + a.width) - (b.x + b.width)).pop();
+  v.x = last.x + last.width + 16; v.y = last.y;
+  flagSet.resizeWithoutConstraints(Math.max(flagSet.width, v.x + v.width + (flagSet.width - (last.x + last.width))), flagSet.height);
+  report.info.germany = `eklendi ${R(v.width)}x${R(v.height)} @${R(v.x)},${R(v.y)}; set ${R(flagSet.width)}x${R(flagSet.height)}; varyant sayısı ${flagSet.children.length}`;
+});
+
+await step('C tenants flags', async () => {
   const out = [];
   for (const cs of fr.findAll(n => n.type === 'INSTANCE' && /^Club strip/.test(n.name))) {
     const fl = cs.findOne(n => n.type === 'INSTANCE' && /Flag/.test(n.name));
-    if (!fl) { out.push(cs.name + ': flag yok'); continue; }
-    const main = await fl.getMainComponentAsync();
-    const defs = main.parent && main.parent.componentPropertyDefinitions ? main.parent.componentPropertyDefinitions : {};
-    const key = Object.keys(defs).find(k => /Country/i.test(k));
-    const opts = key ? defs[key].variantOptions : [];
-    out.push(`${cs.name}: ${key} options=[${opts.join(', ')}] current=${JSON.stringify(fl.componentProperties)}`);
-    const hit = opts.find(o => /germany|^de$|^ger$/i.test(o));
-    if (hit) { fl.setProperties({ [key]: hit }); out.push('  -> ' + hit); } else out.push('  -> Germany yok, değiştirilmedi');
+    fl.setProperties({ Country: 'Germany' });
+    out.push(`${cs.name}: ${fl.componentProperties.Country.value} ${R(fl.width)}x${R(fl.height)}`);
   }
-  report.info.flags = out;
-});
-
-await step('C hero button icon', async () => {
-  const btn = fr.findOne(n => n.name === 'Button · View on map');
-  const props = btn.componentProperties || {};
-  report.info.btnIconProps = Object.keys(props).map(k => `${k}:${props[k].type}=${String(props[k].value).slice(0, 20)}`);
-  const ik = Object.keys(props).find(k => /^Icon/.test(k));
-  const defs = (await btn.getMainComponentAsync()).parent.componentPropertyDefinitions;
-  report.info.btnIconDef = ik && defs[ik] ? defs[ik].type : 'yok';
-  const visIcons = btn.findAll(n => n.visible !== false && /Icon|Vector/.test(n.name)).map(n => `${n.type}:${n.name}`).slice(0, 8);
-  report.info.btnVisibleIconNodes = visIcons;
-  const menu = [];
-  (function w(n) { if (n.type === 'COMPONENT_SET' && /^Menu icon$/.test(n.name)) n.children.forEach(c => menu.push(c.name)); else if ('children' in n && n.type !== 'COMPONENT_SET') n.children.forEach(w); })(p01);
-  report.info.menuIconVariants = menu;
+  report.info.tenantFlags = out;
 });
 
 return report;
