@@ -1,4 +1,4 @@
-// step 321 · stadyum kartı hero: ad tek parça ("Spreeufer Stadium", tek stil, sığmazsa alt satıra iner; "ad küçük SOYADI büyük" ayrımı kalktı) · hero fotoğrafı stadyum sahnesi (img/m3/hero-a-1s.jpg: tribün, yedek kulübesi, saha)
+// step 321 · stadyum kartı hero: ad tek parça ("Spreeufer Stadium", tek stil, sığmazsa alt satıra iner; "ad küçük SOYADI büyük" ayrımı kalktı) · hero fotoğrafı stadyum sahnesi (img/facility/stadium-aerial-v1.jpg: Deniz'in verdiği havadan stadyum, 500x281 kaynak 2x büyütüldü, geçici)
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const R = Math.round;
@@ -29,7 +29,7 @@ await step('A name', async () => {
 
 await step('B photo', async () => {
   const hero = fr.findOne(n => n.name === 'Hero · stadium identity'), photo = hero.findOne(n => n.name === 'Facility photo');
-  const img = await figma.createImageAsync('https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/m3/hero-a-1s.jpg');
+  const img = await figma.createImageAsync('https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/facility/stadium-aerial-v1.jpg');
   photo.fills = [{ type: 'IMAGE', imageHash: img.hash, scaleMode: 'FILL' }];
   photo.resize(488, hero.height - 80); photo.y = 40;
   report.info.hero = `${R(hero.width)}x${R(hero.height)} photo ${R(photo.width)}x${R(photo.height)}`;
