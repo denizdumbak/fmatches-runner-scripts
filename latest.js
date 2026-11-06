@@ -1,65 +1,86 @@
-// step 332 · Player result: masaüstü sütunlar Age 48 / Nationality 136 / Contract until 104 + Meta tek satır (kısaltma), mobil sütunlar Age 56 / Nationality 128 / Contract until kalanı; Event row mobil Meta taşması ölçülüp düzeltilir
-const report = { done: [], errors: [], info: {} };
+// step 333 · arama sonuçları prototip bağlantıları (yalnız ideal senaryo, ok çizilmez): Home arama -> All results, sekmeler, Show all, satırlar -> profil / stadyum / etkinlik, mobil Filters, No results -> harita
+const report = { done: [], errors: [], info: { links: [], skipped: [] } };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
-const R = Math.round;
-const p01 = figma.root.children.find(p => /^01/.test(p.name));
-const p02 = figma.root.children.find(p => /^02/.test(p.name));
-await p01.loadAsync(); await p02.loadAsync();
-const pick = re => { let r = null; (function w(n) { if (r) return; if ((n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') && re.test(n.name)) { r = n; return; } if ('children' in n) for (const k of n.children) w(k); })(p01); return r; };
-const set = pick(/^Player result$/), evSet = pick(/^Event row$/);
-function fixFacts(v, widths, fillLast) {
-  const kf = v.findOne(n => n.name === 'Key facts'); kf.counterAxisAlignItems = 'MIN';
-  const facts = kf.children.filter(n => n.type === 'FRAME');
-  facts.forEach((f, i) => {
-    if (fillLast && i === facts.length - 1) f.layoutSizingHorizontal = 'FILL';
-    else { f.layoutSizingHorizontal = 'FIXED'; f.resize(widths[i], f.height); }
-    f.layoutSizingVertical = 'HUG';
-    for (const k of f.children) {
-      if (k.type === 'TEXT') { k.textAutoResize = 'HEIGHT'; k.layoutSizingHorizontal = 'FILL'; }
-      else { try { k.layoutSizingHorizontal = 'FILL'; } catch (e) { /* yok say */ } }
-    }
-  });
-  return kf.children.filter(n => n.type === 'FRAME').map(f => R(f.width)).join('/');
+const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
+const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web');
+const mob = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
+const sub = (plat, re) => plat.children.find(n => n.type === 'SECTION' && re.test(n.name));
+const frames = sec => (sec ? sec.children.filter(n => n.type === 'FRAME') : []);
+const nav = dest => ({ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'NODE', destinationId: dest.id, navigation: 'NAVIGATE', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.3 }, preserveScrollPosition: false, resetVideoPosition: false }] });
+const isNavAct = a => a && a.type === 'NODE' && a.navigation !== 'CHANGE_TO';
+async function link(label, el, dest) {
+  if (!el) { report.info.skipped.push(label + ': öğe yok'); return; }
+  if (!dest) { report.info.skipped.push(label + ': hedef yok'); return; }
+  const keep = (el.reactions || []).filter(r => !(r.actions || []).some(isNavAct));
+  await el.setReactionsAsync(keep.concat([nav(dest)])); report.info.links.push(label);
 }
-await step('desktop', async () => {
-  const out = [];
-  for (const v of set.children.filter(c => /Device=Desktop/.test(c.name))) {
-    const w = fixFacts(v, [48, 136, 104], false);
-    const kf = v.findOne(n => n.name === 'Key facts'); kf.layoutSizingHorizontal = 'HUG';
-    const m = v.findOne(n => n.type === 'TEXT' && n.name === 'Meta'); m.textAutoResize = 'HEIGHT'; m.textTruncation = 'ENDING'; m.maxLines = 1; m.layoutSizingHorizontal = 'FILL';
-    out.push(`${v.name}: facts ${w} keyfacts ${R(kf.width)} meta ${R(m.width)}`);
+const find = (root, re, types) => root.findOne(n => re.test(n.name) && (!types || types.indexOf(n.type) >= 0));
+
+const searchW = sub(web, /^Search results$/), searchM = sub(mob, /^Search results$/);
+const S = (sec, t, dev) => frames(sec).find(f => f.name === `Search / ${t} · ${dev}`);
+const dev = { D: { sec: searchW, label: 'Desktop' }, M: { sec: searchM, label: 'Mobile' } };
+const find1 = (sec, res) => { for (const re of res) { const f = frames(sec).find(x => re.test(x.name)); if (f) return f; } return null; };
+const T = {
+  D: {
+    profile: find1(sub(web, /^Profiles · player$/), [/^Profiles \/ Player · Desktop$/, /^Profiles \/ Player.*· Desktop$/]),
+    stadium: find1(sub(web, /^Stadium card$/), [/^Facilities \/ Stadium card · Desktop$/]),
+    event: find1(sub(web, /^Events$/), [/^Events \/ Event card · Desktop$/, /Event card.*· Desktop$/]),
+    map: find1(sub(web, /^Map$/), [/^Map \/ Default · Desktop$/]),
+    home: find1(sub(web, /^Home page$/), [/^Home \/ Main · Desktop$/])
+  },
+  M: {
+    profile: find1(sub(mob, /^Profiles · player$/), [/^Profiles \/ Player · Mobile$/, /^Profiles \/ Player.*· Mobile$/]),
+    stadium: find1(sub(mob, /^Stadium card$/), [/^Facilities \/ Stadium card · Mobile$/]),
+    event: find1(sub(mob, /^Events$/), [/^Events \/ Event card · Mobile$/, /Event card.*· Mobile$/]),
+    map: find1(sub(mob, /^Map$/), [/^Map \/ Default · Mobile$/, /^Map \/ Clubs · Mobile$/]),
+    home: find1(sub(mob, /^Home page$/), [/^Home \/ Main · Mobile$/])
   }
-  report.info.desktop = out;
-});
-await step('mobile', async () => {
-  const out = [];
-  for (const v of set.children.filter(c => /Device=Mobile/.test(c.name))) {
-    const w = fixFacts(v, [56, 128, 0], true);
-    out.push(`${v.name}: facts ${w}`);
+};
+report.info.targets = { D: Object.keys(T.D).map(k => k + '=' + (T.D[k] ? T.D[k].name : 'YOK')), M: Object.keys(T.M).map(k => k + '=' + (T.M[k] ? T.M[k].name : 'YOK')) };
+
+await step('home search -> all results', async () => {
+  for (const k of ['D', 'M']) {
+    const home = T[k].home; if (!home) { report.info.skipped.push('home ' + k + ': sayfa yok'); continue; }
+    const navi = home.findOne(n => n.name === 'Navigation');
+    const el = k === 'D' ? (navi && navi.findOne(n => n.name === 'Search' && n.type === 'FRAME')) : (navi && navi.findOne(n => /^Icon button · Search$/.test(n.name)));
+    await link(`Home ${k} search -> All results`, el, S(dev[k].sec, 'All results', dev[k].label));
   }
-  report.info.mobile = out;
 });
-await step('event row mobile meta', async () => {
-  const out = [];
-  for (const v of evSet.children.filter(c => /Device=Mobile/.test(c.name))) {
-    const d = v.findOne(n => n.name === 'Details'), m = v.findOne(n => n.name === 'Meta'), loc = v.findOne(n => n.type === 'TEXT' && n.name === 'Location');
-    const before = `details ${R(d.width)} meta ${R(m.width)} loc ${R(loc.width)} h ${R(v.height)}`;
-    m.layoutSizingHorizontal = 'FILL';
-    loc.textAutoResize = 'HEIGHT'; loc.layoutSizingHorizontal = 'FILL'; loc.textTruncation = 'ENDING'; loc.maxLines = 1;
-    out.push(`${v.name}: ${before} -> details ${R(d.width)} meta ${R(m.width)} loc ${R(loc.width)} h ${R(v.height)}`);
+await step('tabs and show-all', async () => {
+  const names = ['All results', 'Players', 'Clubs', 'Facilities', 'Events'];
+  const tabKey = { 'All results': 'All', Players: 'Players', Clubs: 'Clubs', Facilities: 'Facilities', Events: 'Events' };
+  for (const k of ['D', 'M']) {
+    for (const nm of names) {
+      const fr = S(dev[k].sec, nm, dev[k].label); if (!fr) { report.info.skipped.push(`${k} ${nm}: ekran yok`); continue; }
+      for (const t of names) { if (t === nm) continue; await link(`${k} ${nm} tab ${tabKey[t]}`, fr.findOne(n => n.name === 'Tab · ' + tabKey[t]), S(dev[k].sec, t, dev[k].label)); }
+    }
+    const all = S(dev[k].sec, 'All results', dev[k].label);
+    if (all) for (const [word, t] of [['player', 'Players'], ['club', 'Clubs'], ['facilit', 'Facilities'], ['event', 'Events']]) await link(`${k} All show all ${t}`, all.findOne(n => n.type === 'INSTANCE' && /^Button · Show all/.test(n.name) && n.name.toLowerCase().indexOf(word) >= 0 || (k === 'M' && n.type === 'INSTANCE' && /^Button · Show all/.test(n.name) && n.parent && n.parent.parent && n.parent.parent.name === 'Group · ' + t)), S(dev[k].sec, t, dev[k].label));
   }
-  report.info.eventRow = out;
 });
-await step('check', async () => {
-  const out = [];
-  for (const fr of p02.findAll(n => n.type === 'FRAME' && /^Search \/ (Players|All results|Events) · (Desktop|Mobile)$/.test(n.name))) {
-    const rows = fr.findAll(n => n.type === 'INSTANCE' && /^(Player|Event) ·/.test(n.name));
-    const over = [];
-    for (const n of fr.findAll(x => x.visible !== false && x.type !== 'VECTOR')) { const p = n.parent; if (!p || p === fr || p.type === 'INSTANCE' || n.layoutPositioning === 'ABSOLUTE' || p.type !== 'FRAME' || p.name === 'Tabs') continue; const a = n.absoluteBoundingBox, b = p.absoluteBoundingBox; if (a && b && a.x + a.width > b.x + b.width + 0.5) over.push(`${p.name} :: ${n.name}`); }
-    let xs = '';
-    if (/Players/.test(fr.name)) xs = [0, 1, 2].map(i => { const s = {}; for (const r of rows) { const kf = r.findOne(n => n.name === 'Key facts'); const f = kf && kf.children.filter(n => n.type === 'FRAME')[i]; if (f) s[R(f.absoluteBoundingBox.x - r.absoluteBoundingBox.x)] = 1; } return Object.keys(s).join('/'); }).join(' | ');
-    out.push(`${fr.name}: row heights ${rows.map(r => R(r.height)).join(',')} fact x ${xs || '-'} overflow ${over.length ? over.slice(0, 3).join('; ') : 'none'}`);
+await step('rows', async () => {
+  for (const k of ['D', 'M']) {
+    for (const nm of ['All results', 'Players']) { const fr = S(dev[k].sec, nm, dev[k].label); if (fr) await link(`${k} ${nm} first player -> profile`, fr.findOne(n => n.type === 'INSTANCE' && /^Player ·/.test(n.name)), T[k].profile); }
+    for (const nm of ['All results', 'Facilities']) { const fr = S(dev[k].sec, nm, dev[k].label); if (fr) await link(`${k} ${nm} first facility -> stadium`, fr.findOne(n => n.type === 'INSTANCE' && /^Button · View stadium$/.test(n.name)), T[k].stadium); }
+    for (const nm of ['All results', 'Events']) { const fr = S(dev[k].sec, nm, dev[k].label); if (fr) await link(`${k} ${nm} first event -> event card`, fr.findOne(n => n.type === 'INSTANCE' && /^Event ·/.test(n.name)), T[k].event); }
+    const none = S(dev[k].sec, 'No results', dev[k].label); if (none) await link(`${k} No results -> map`, none.findOne(n => n.type === 'INSTANCE' && /^Button · Open the map$/.test(n.name)), T[k].map);
   }
-  report.info.check = out;
 });
+await step('mobile filters', async () => {
+  const pl = S(searchM, 'Players', 'Mobile'), fl = S(searchM, 'Filters', 'Mobile');
+  if (pl) await link('M Players Filters -> Filters', pl.findOne(n => n.type === 'INSTANCE' && n.name === 'Button · Filters'), fl);
+  if (fl) await link('M Filters Show results -> Players', fl.findOne(n => n.type === 'INSTANCE' && n.name === 'Button · Show results'), pl);
+});
+await step('flow starts', async () => {
+  const now = p02.flowStartingPoints.slice(); const add = [];
+  for (const [nm, k] of [['Web · Search results', 'D'], ['Mobile · Search results', 'M']]) { const f = S(dev[k].sec, 'All results', dev[k].label); if (f && !now.some(x => x.nodeId === f.id)) add.push({ nodeId: f.id, name: nm }); }
+  const keep = now.filter(f => !add.some(a => a.name === f.name));
+  p02.flowStartingPoints = keep.concat(add); report.info.flows = p02.flowStartingPoints.length;
+});
+await step('verify', async () => {
+  let total = 0, broken = 0;
+  for (const n of p02.findAll(x => 'reactions' in x && x.reactions && x.reactions.length)) for (const r of n.reactions) for (const a of (r.actions || [])) if (a && a.type === 'NODE' && a.destinationId) { total++; const d = await figma.getNodeByIdAsync(a.destinationId); if (!d) broken++; }
+  report.info.verify = `links ${total} broken ${broken}`;
+});
+report.info.linkCount = report.info.links.length;
 return report;
