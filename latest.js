@@ -1,103 +1,141 @@
-// step 324 · arama sonuçları (19) için SALT OKUNUR inspect: mevcut arama alanları, satır/kart component'leri (Person row, Contact row, Shortlist row, Club strip, Event row, Filter chip, Tabs...), Shortlists ve Map panel yapısı, Web/Mobile Section sonu. Hiçbir şey değiştirilmez.
+// step 325 · arama sonuçları component'leri (01 › 10 · Contacts & settings altına): Player result (Device x Action x State, 8), Club result (4), Facility result (4). Shortlist row / Contact row varyantlarından türetilir; hover bağlantıları yeniden kurulur.
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const R = Math.round;
-const num = v => (typeof v === 'number' ? R(v) : '?');
-const str = v => (typeof v === 'string' ? v : '?');
 const p01 = figma.root.children.find(p => /^01/.test(p.name));
-const p02 = figma.root.children.find(p => /^02/.test(p.name));
-await p01.loadAsync(); await p02.loadAsync();
-const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web');
-const mob = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
-const sub = (plat, re) => plat.children.find(n => n.type === 'SECTION' && re.test(n.name));
-const frameIn = (sec, re) => sec && sec.children.find(n => n.type === 'FRAME' && re.test(n.name));
-function line(n, d) {
-  let s = '';
-  try { s = `${'  '.repeat(d)}${n.type[0]}${n.type === 'INSTANCE' ? 'I' : ''} ${n.name} ${num(n.width)}x${num(n.height)}`; } catch (e) { return '?'; }
-  try { if (n.layoutMode && n.layoutMode !== 'NONE') s += ` ${n.layoutMode[0]} gap${num(n.itemSpacing)}`; } catch (e) {}
-  try { if (n.layoutPositioning === 'ABSOLUTE') s += ' ABS'; } catch (e) {}
-  try { if (n.type === 'TEXT') s += ` "${String(n.characters).slice(0, 40)}" ${typeof n.textStyleId === 'string' && n.textStyleId ? 'styled' : 'UNSTYLED'}`; } catch (e) {}
-  try { if (n.visible === false) s += ' HIDDEN'; } catch (e) {}
-  return s;
+await p01.loadAsync();
+await figma.setCurrentPageAsync(p01);
+const pick = re => { let r = null; (function w(n) { if (r) return; if ((n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') && re.test(n.name)) { r = n; return; } if ('children' in n) for (const k of n.children) w(k); })(p01); return r; };
+const variants = s => (s.type === 'COMPONENT_SET' ? s.children : [s]);
+async function setText(t, str) { if (!t) throw new Error('metin katmanı yok: ' + str); for (const f of t.getRangeAllFontNames(0, Math.max(t.characters.length, 1))) await figma.loadFontAsync(f); t.characters = str; }
+const byName = (root, nm) => root.findOne(n => n.name === nm);
+const sec = p01.children.find(n => n.type === 'SECTION' && /Contacts & settings/.test(n.name));
+if (!sec) throw new Error('Section 10 · Contacts & settings yok');
+const NAMES = ['Player result', 'Club result', 'Facility result'];
+
+// önce eski çalıştırmadan kalanları sil
+for (const k of sec.children.slice()) if (NAMES.indexOf(k.name) >= 0) k.remove();
+for (const k of p01.children.slice()) if (k.type === 'COMPONENT' && /^(Device=.*Action=|Device=.*Kind=Result)/.test(k.name)) k.remove();
+
+let cursor = 0;
+for (const k of sec.children) cursor = Math.max(cursor, k.y + k.height);
+cursor += 120;
+
+const starSet = pick(/^Icon button$/);
+const starV = variants(starSet).find(v => /Icon=Star/.test(v.name) && /State=Default/.test(v.name));
+const crestSet = pick(/^Club crest$/);
+const crestV = crestSet ? variants(crestSet)[0] : null;
+report.info.parts = { star: !!starV, crest: !!crestV };
+
+async function assemble(setName, specs) {
+  // specs: [{ src, name, edit(clone) }]
+  const clones = [];
+  for (const s of specs) {
+    const c = s.src.clone(); sec.appendChild(c); c.name = s.name;
+    await s.edit(c);
+    clones.push({ c, device: /Device=Mobile/.test(s.name) ? 1 : 0 });
+  }
+  // ızgara: sütun = Device, sıra = diğer varyantlar
+  const rows = {}; let ri = 0;
+  const rowKey = n => n.replace(/Device=\w+,?\s*/, '');
+  const keys = []; for (const x of clones) { const k = rowKey(x.c.name); if (keys.indexOf(k) < 0) keys.push(k); }
+  let y = 0;
+  for (const k of keys) {
+    const grp = clones.filter(x => rowKey(x.c.name) === k);
+    let h = 0;
+    for (const x of grp) { x.c.x = 80 + x.device * 1140; x.c.y = cursor + y; h = Math.max(h, x.c.height); }
+    y += h + 40;
+  }
+  const set = figma.combineAsVariants(clones.map(x => x.c), sec);
+  set.name = setName; set.x = 80; set.y = cursor;
+  // hover bağlantıları
+  for (const v of set.children) {
+    if (!/State=Default/.test(v.name)) continue;
+    const hv = set.children.find(h => h.name === v.name.replace('State=Default', 'State=Hover'));
+    if (!hv) continue;
+    await v.setReactionsAsync([{ trigger: { type: 'ON_HOVER' }, actions: [{ type: 'NODE', destinationId: hv.id, navigation: 'CHANGE_TO', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.15 }, preserveScrollPosition: false, resetVideoPosition: false }] }]);
+  }
+  cursor += set.height + 120;
+  return set;
 }
-function dump(n, d, max, out) { if (d > max) return; out.push(line(n, d)); if ('children' in n && n.type !== 'INSTANCE' || (n.type === 'INSTANCE' && d < max)) { try { for (const k of n.children) dump(k, d + 1, max, out); } catch (e) {} } }
-const setsIn = (root, re) => { const r = []; (function w(n) { if ((n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') && re.test(n.name)) { r.push(n); return; } if ('children' in n) for (const k of n.children) w(k); })(root); return r; };
 
-// 1) arama izleri: katman adı ya da metin "search" / "find" içerenler (02 ve 01)
-await step('search traces', async () => {
-  const hits = {};
-  for (const [label, root] of [['01', p01], ['02', p02]]) {
-    const found = root.findAll(n => { try { if (n.type === 'TEXT') return /search|find /i.test(n.characters); return /search/i.test(n.name); } catch (e) { return false; } });
-    const g = {};
-    for (const n of found) {
-      let top = n; while (top.parent && top.parent.type !== 'PAGE' && top.parent.type !== 'SECTION') top = top.parent;
-      let key = `${n.type} ${n.name}${n.type === 'TEXT' ? ' "' + String(n.characters).slice(0, 36) + '"' : ''}`;
-      const ctx = top && top.parent && top.parent.type === 'SECTION' ? top.parent.name : (top ? top.name : '');
-      g[key] = g[key] || { n: 0, ctx: {} }; g[key].n++; g[key].ctx[ctx] = 1;
+// 1) Player result
+await step('player result', async () => {
+  const src = pick(/^Shortlist row$/);
+  const specs = [];
+  for (const v of src.children) {
+    const dev = /Device=Mobile/.test(v.name) ? 'Mobile' : 'Desktop';
+    const st = /State=Hover/.test(v.name) ? 'Hover' : 'Default';
+    for (const act of ['Message', 'Add to contacts']) {
+      specs.push({ src: v, name: `Device=${dev}, Action=${act}, State=${st}`, edit: async c => {
+        const actions = byName(c, 'Actions');
+        const msg = byName(actions, 'Button · Message'), rem = byName(actions, 'Button · Remove');
+        if (act === 'Message') { if (rem) rem.remove(); }
+        else {
+          if (msg) msg.remove();
+          if (rem) { await setText(rem.findOne(n => n.type === 'TEXT' && n.name === 'Label'), 'Add to contacts'); rem.name = 'Button · Add to contacts'; }
+        }
+        if (starV) { const st2 = starV.createInstance(); actions.appendChild(st2); st2.name = 'Icon button · Shortlist'; }
+      } });
     }
-    hits[label] = Object.keys(g).slice(0, 40).map(k => `${k} x${g[k].n} in ${Object.keys(g[k].ctx).slice(0, 3).join('|')}`);
   }
-  report.info.searchTraces = hits;
+  const set = await assemble('Player result', specs);
+  report.info.playerResult = set.children.map(v => `${v.name} ${R(v.width)}x${R(v.height)} actions: ${byName(v, 'Actions').children.map(a => a.name).join(' | ')}`);
 });
 
-// 2) component'ler: ad, tür, varyant sayısı, boyutlar, varyant özellikleri
-await step('components', async () => {
-  const names = /^(Person row|Contact row|Shortlist row|Club strip|Event row|Filter chip|Tabs?|Tab|Form field|Map type switcher|Map panel|Empty card|Option list|Tag|Chat list item|Application status|Page notice|Section header|List card|Heading row|Verification badge|Key fact|Icon button|Facility.*|Map card)$/i;
+// 2) Club result ve 3) Facility result (Contact row Connected)
+async function resultFromContact(setName, kind) {
+  const src = pick(/^Contact row$/);
+  const specs = [];
+  const base = src.children.filter(v => /Kind=Connected/.test(v.name));
+  let img = null;
+  if (kind === 'facility') { img = await figma.createImageAsync('https://raw.githubusercontent.com/denizdumbak/fmatches-runner-scripts/main/img/facility/stadium-aerial-v1.jpg'); }
+  for (const v of base) {
+    const dev = /Device=Mobile/.test(v.name) ? 'Mobile' : 'Desktop';
+    const st = /State=Hover/.test(v.name) ? 'Hover' : 'Default';
+    specs.push({ src: v, name: `Device=${dev}, State=${st}`, edit: async c => {
+      const photo = byName(c, 'Photo');
+      const sil = photo.findOne(n => n.type === 'INSTANCE' && /Silhouette/.test(n.name)); if (sil) sil.remove();
+      if (kind === 'club') {
+        if (!crestV) throw new Error('Club crest yok');
+        const cr = crestV.createInstance(); photo.appendChild(cr);
+        if (photo.layoutMode === 'NONE') { cr.x = (photo.width - cr.width) / 2; cr.y = (photo.height - cr.height) / 2; }
+        cr.name = 'Club crest';
+        await setText(byName(c, 'Name'), 'Riverside FC'); await setText(byName(c, 'Meta'), 'England · Third Division');
+      } else {
+        photo.fills = [{ type: 'IMAGE', imageHash: img.hash, scaleMode: 'FILL' }];
+        await setText(byName(c, 'Name'), 'Riverside Park'); await setText(byName(c, 'Meta'), 'Riverside, England · Natural grass · 4,200');
+      }
+      const actions = byName(c, 'Actions');
+      const msg = byName(actions, 'Button · Message'); if (!msg) throw new Error('Button · Message yok');
+      await setText(msg.findOne(n => n.type === 'TEXT' && n.name === 'Label'), kind === 'club' ? 'View club' : 'View stadium');
+      msg.name = kind === 'club' ? 'Button · View club' : 'Button · View stadium';
+      const more = byName(actions, 'Icon button · More'); if (more) more.remove();
+    } });
+  }
+  const set = await assemble(setName, specs);
+  report.info[setName] = set.children.map(v => `${v.name} ${R(v.width)}x${R(v.height)} actions: ${byName(v, 'Actions').children.map(a => a.name).join(' | ')}`);
+}
+await step('club result', () => resultFromContact('Club result', 'club'));
+await step('facility result', () => resultFromContact('Facility result', 'facility'));
+
+// kontrol ve Section boyutu
+await step('check', async () => {
+  let r = 0, b = 0; for (const k of sec.children) { r = Math.max(r, k.x + k.width); b = Math.max(b, k.y + k.height); }
+  sec.resizeWithoutConstraints(Math.max(sec.width, r + 80), b + 80);
   const out = [];
-  for (const c of setsIn(p01, names)) {
-    let props = '';
-    try { if (c.type === 'COMPONENT_SET') props = Object.keys(c.componentPropertyDefinitions).slice(0, 8).map(k => k.split('#')[0] + '=' + (c.componentPropertyDefinitions[k].variantOptions || [c.componentPropertyDefinitions[k].type]).slice(0, 5).join('/')).join(' · '); } catch (e) {}
-    const kids = c.type === 'COMPONENT_SET' ? c.children : [c];
-    const sizes = {}; kids.forEach(k => { const key = `${num(k.width)}x${num(k.height)}`; sizes[key] = (sizes[key] || 0) + 1; });
-    out.push(`${c.type === 'COMPONENT_SET' ? 'SET' : 'COMP'} ${c.name} [${c.parent ? c.parent.name : '?'}] n${kids.length} sizes ${JSON.stringify(sizes)} ${props}`);
+  for (const nm of NAMES) {
+    const s = sec.children.find(k => k.name === nm); if (!s) { out.push(nm + ': YOK'); continue; }
+    const un = s.findAll(n => n.type === 'TEXT' && !(typeof n.textStyleId === 'string' && n.textStyleId)).length;
+    const gray = s.findAll(n => { try { return Array.isArray(n.fills) && n.fills.some(f => f.type === 'SOLID' && !(f.boundVariables && f.boundVariables.color) && Math.abs(f.color.r - 0.5) < 0.01 && Math.abs(f.color.g - 0.5) < 0.01); } catch (e) { return false; } }).length;
+    const over = [];
+    for (const v of s.children) for (const n of v.findAll(x => x.visible !== false && x.type !== 'VECTOR')) { const p = n.parent; if (!p || p === v || p.type === 'INSTANCE' || n.layoutPositioning === 'ABSOLUTE' || p.type !== 'FRAME') continue; const a = n.absoluteBoundingBox, bb = p.absoluteBoundingBox; if (a && bb && a.x + a.width > bb.x + bb.width + 0.5) over.push(`${v.name} :: ${p.name} > ${n.name}`); }
+    out.push(`${nm}: n${s.children.length} ${R(s.width)}x${R(s.height)} at ${R(s.x)},${R(s.y)} unstyled ${un} grayFills ${gray} overflow ${over.length ? over.slice(0, 4).join('; ') : 'none'}`);
   }
-  report.info.components = out;
+  const sb = sec.absoluteBoundingBox, ov = [];
+  for (const s of p01.children) if (s !== sec && s.type === 'SECTION') { const c = s.absoluteBoundingBox; if (sb.x < c.x + c.width && c.x < sb.x + sb.width && sb.y < c.y + c.height && c.y < sb.y + sb.height) ov.push(s.name); }
+  report.info.check = out; report.info.section = `${R(sec.width)}x${R(sec.height)} overlaps ${ov.length ? ov.join(',') : 'none'}`;
 });
-
-// 3) satır component'lerinin iç yapısı (ilk varyant)
-await step('row structure', async () => {
-  const out = {};
-  for (const nm of ['Person row', 'Contact row', 'Shortlist row', 'Club strip', 'Event row', 'Chat list item']) {
-    const c = setsIn(p01, new RegExp('^' + nm + '$', 'i'))[0]; if (!c) { out[nm] = 'YOK'; continue; }
-    const v = c.type === 'COMPONENT_SET' ? (c.children.find(k => /Desktop/.test(k.name)) || c.children[0]) : c;
-    const lines = []; dump(v, 0, 4, lines); out[nm] = [v.name].concat(lines.slice(0, 26));
-  }
-  report.info.rows = out;
-});
-
-// 4) Shortlists sayfası (kalıp) ve Map panel arama alanı
-await step('shortlists page', async () => {
-  const sec = sub(web, /^Shortlists$/); const fr = frameIn(sec, /^Shortlists \/ Shortlists/);
-  if (!fr) { report.info.shortlists = 'YOK'; return; }
-  const lines = []; dump(fr, 0, 4, lines); report.info.shortlists = [fr.name, `section ${sec.name} ${num(sec.x)},${num(sec.y)} ${num(sec.width)}x${num(sec.height)}`].concat(lines.slice(0, 40));
-});
-await step('map panel search', async () => {
-  const sec = sub(web, /^Map$/); const fr = frameIn(sec, /^Map \/ Clubs/) || (sec && sec.children.find(n => n.type === 'FRAME'));
-  if (!fr) { report.info.mapPanel = 'YOK'; return; }
-  const panel = fr.findOne(n => n.name === 'Map panel');
-  const lines = []; if (panel) dump(panel, 0, 3, lines); report.info.mapPanel = [fr.name].concat(lines.slice(0, 24));
-});
-await step('header + home search', async () => {
-  const sec = sub(web, /^Home page$/); const fr = sec && sec.children.find(n => n.type === 'FRAME');
-  if (!fr) { report.info.home = 'YOK'; return; }
-  const nav = fr.findOne(n => n.name === 'Navigation'); const lines = []; if (nav) dump(nav, 0, 3, lines);
-  report.info.home = [fr.name].concat(lines.slice(0, 22));
-});
-
-// 5) Web / Mobile Section'lar: sıra, konum, boyut (yeni Search results Section'ının yeri için)
-await step('sections', async () => {
-  const f = plat => plat.children.filter(n => n.type === 'SECTION').sort((a, b) => a.y - b.y).map(s => `${s.name} ${num(s.x)},${num(s.y)} ${num(s.width)}x${num(s.height)} (${s.children.length})`);
-  report.info.webSections = f(web); report.info.mobSections = f(mob);
-  report.info.platform = `Web ${num(web.width)}x${num(web.height)} · Mobile ${num(mob.x)},${num(mob.y)} ${num(mob.width)}x${num(mob.height)}`;
-});
-
-// 6) Ek: Account menu / kişi satırlarında kullanılan Person row örneği, boş durum, filtre çipi örneği sayfada
-await step('chips and tabs on pages', async () => {
-  const sec = sub(web, /^Shortlists$/); const fr = frameIn(sec, /^Shortlists \/ Shortlists/);
-  if (!fr) return;
-  const chips = fr.findAll(n => n.type === 'INSTANCE' && /Filter chip/i.test(n.name)).slice(0, 3).map(n => line(n, 0));
-  const tabs = fr.findAll(n => /^Tabs$/.test(n.name)).map(n => line(n, 0));
-  report.info.shortlistChips = { chips, tabs };
-});
+await step('view', async () => { const s = sec.children.find(k => k.name === 'Player result'); if (s) { figma.currentPage.selection = [s]; figma.viewport.scrollAndZoomIntoView([s]); } });
 
 return report;
