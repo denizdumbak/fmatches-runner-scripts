@@ -1,4 +1,4 @@
-// step 315 · 314'ün hatalı adımlarını (A, C, E, F) yeniden çalıştırır, SALT OKUNUR; karışık stil kimliği düzeltildi. Orijinal: stadyum kartı ikinci inspect: profil hero ve gövde ayrıntıları, kart boyaları, Event location card, Event row / Section header / Empty card / Tag ağaçları, Map card Stadium, Home Upcoming events
+// step 316 · 315 de aynı hatayı verdi (karışık strokeWeight); düzeltildi, A C E F adımlarını yeniden çalıştırır, SALT OKUNUR. Önceki: 314'ün hatalı adımlarını (A, C, E, F) yeniden çalıştırır, SALT OKUNUR; karışık stil kimliği düzeltildi. Orijinal: stadyum kartı ikinci inspect: profil hero ve gövde ayrıntıları, kart boyaları, Event location card, Event row / Section header / Empty card / Tag ağaçları, Map card Stadium, Home Upcoming events
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const R = Math.round;
@@ -20,12 +20,13 @@ const paint = n => {
 const stroke = n => {
   if (!('strokes' in n) || !n.strokes.length) return '';
   const bv = n.strokes[0].boundVariables && n.strokes[0].boundVariables.color;
-  return 'str:' + (bv ? (varName[bv.id] || '').replace('color/', '') : 'raw') + n.strokeWeight;
+  return 'str:' + (bv ? (varName[bv.id] || '').replace('color/', '') : 'raw') + (typeof n.strokeWeight === 'number' ? n.strokeWeight : 'm');
 };
 const dump = (root, maxD, maxN) => {
   const out = [];
   (function w(x, d) {
     if (out.length >= maxN) return;
+    try {
     const lay = 'layoutMode' in x && x.layoutMode !== 'NONE' ? `${x.layoutMode[0]} g${x.itemSpacing} p${x.paddingTop}/${x.paddingRight}/${x.paddingBottom}/${x.paddingLeft}` : '';
     const rad = 'cornerRadius' in x && x.cornerRadius && x.cornerRadius !== figma.mixed ? 'r' + x.cornerRadius : '';
     const eff = 'effectStyleId' in x && typeof x.effectStyleId === 'string' && x.effectStyleId ? 'fx:' + (styleName[x.effectStyleId] || '?') : '';
@@ -34,6 +35,7 @@ const dump = (root, maxD, maxN) => {
     const vis = x.visible === false ? ' [hidden]' : '';
     const abs = 'layoutPositioning' in x && x.layoutPositioning === 'ABSOLUTE' ? ' ABS@' + R(x.x) + ',' + R(x.y) : '';
     out.push(`${'  '.repeat(d)}${x.type === 'INSTANCE' ? '◇' : ''}${x.name} ${R(x.width)}x${R(x.height)} ${lay} ${rad} ${paint(x)} ${stroke(x)} ${eff}${abs}${vis}${t}`.replace(/ +/g, ' ').trimEnd());
+    } catch (e) { out.push('  '.repeat(d) + (x.name || '?') + ' ERR ' + (e && e.message)); }
     if ('children' in x && d < maxD && (x.type !== 'INSTANCE' || d === 0 || /Event location|Event row|Section header|Empty card|Tag|Club strip|Key fact/.test(x.name))) for (const k of x.children) w(k, d + 1);
   })(root, 0);
   return out;
