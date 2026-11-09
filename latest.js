@@ -1,4 +1,4 @@
-// step 376 · Club card MASAÜSTÜ: Management tam genişlik 4 sütun · Women's notu silinir · Women's 8 yönetici (kapalı "Show all 8" + yeni ekran açık) · alt satır Facilities (etkinlikler tesis satırlarında açılır) | Location (harita esner) · "Events on club's facilities" bölümü kalkar
+// step 377 · Club card MOBİL: Women's notu silinir · Women's 8 yönetici (kapalı 4 + "Show all 8", yeni ekran açık) · "Events on club's facilities" kalkar, etkinlikler tesis satırlarında açılır (sayı satır içinde) · sıra Management, Teams, Location, Facilities
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const p01 = figma.root.children.find(p => /^01/.test(p.name)); await p01.loadAsync();
@@ -19,10 +19,10 @@ const SV = body => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" 
 const CHEV_DOWN = SV('<path d="m6 9 6 6 6-6"/>'), CHEV_UP = SV('<path d="m18 15-6-6-6 6"/>');
 const nav = dest => ({ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'NODE', destinationId: dest.id, navigation: 'NAVIGATE', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.3 }, preserveScrollPosition: false, resetVideoPosition: false }] });
 const isNavAct = a => a && a.type === 'NODE' && a.navigation !== 'CHANGE_TO';
-const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web');
+const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
 const sec = web.children.find(n => n.type === 'SECTION' && n.name === 'Club card');
 const frameOf = nm => sec.children.find(c => c.type === 'FRAME' && c.name === nm);
-const NAMES = { full: 'Clubs / Club card · Desktop', women: `Clubs / Club card / Women's club · Desktop`, staff: 'Clubs / Club card / Staff tab · Desktop', team: 'Clubs / Club card / Team list open · Desktop', womenOpen: `Clubs / Club card / Women's club / Management expanded · Desktop` };
+const NAMES = { full: 'Clubs / Club card · Mobile', women: `Clubs / Club card / Women's club · Mobile`, staff: 'Clubs / Club card / Staff tab · Mobile', team: 'Clubs / Club card / Team list open · Mobile', womenOpen: `Clubs / Club card / Women's club / Management expanded · Mobile` };
 const btnSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Button');
 const subtle = () => { const v = btnSet.children.find(c => c.name.indexOf('Style=Subtle') >= 0 && c.name.indexOf('State=Default') >= 0); if (!v) throw new Error('Subtle Button yok'); return v; };
 async function setLabel(btn, str) {
@@ -32,25 +32,12 @@ async function setLabel(btn, str) {
 async function setTxt(t, str) { await figma.loadFontAsync(t.fontName); t.characters = str; }
 const bodyOf = f => f.findOne(n => n.type === 'FRAME' && n.name === 'Profile body');
 
-async function restructure(f, key) {
+
+async function restructure(f) {
   const log = []; const body = bodyOf(f); if (!body) throw new Error('Profile body yok: ' + f.name);
   const note = body.children.find(c => /^Note · Women/.test(c.name)); if (note) { note.remove(); log.push('Women notu silindi'); }
-  let mgmt = body.children.find(c => c.name === 'Management'); const cols = body.children.find(c => c.name === 'Profile columns'); const cols2 = body.children.find(c => c.name === 'Profile columns 2');
-  if (!mgmt && cols) { const main = cols.findOne(n => n.name === 'Main column'); mgmt = main.findOne(n => n.type === 'FRAME' && n.name === 'Management'); body.insertChild(body.children.indexOf(cols), mgmt); mgmt.layoutSizingHorizontal = 'FILL'; log.push('Management tam genislik'); }
-  if (!mgmt) throw new Error('Management yok: ' + f.name);
-  const grid = mgmt.findOne(n => n.name === 'Management grid');
-  const inner = mgmt.width - mgmt.paddingLeft - mgmt.paddingRight; const gap = grid.itemSpacing; const w = Math.floor((inner - 3 * gap) / 4);
-  for (const r of grid.children.filter(c => /^Person row/.test(c.name))) { r.resize(w, r.height); r.layoutSizingVertical = 'FILL'; }
-  log.push('4 sutun, satir ' + w + ' px (kart ic ' + R(inner) + ', bosluk ' + gap + ')');
-  // Location alt satira
-  if (cols) {
-    const side = cols.findOne(n => n.name === 'Side column'); cols2.appendChild(side); side.layoutSizingVertical = 'FILL';
-    const loc = side.findOne(n => n.type === 'FRAME' && /^Location ·/.test(n.name)); loc.layoutSizingVertical = 'FILL';
-    const map = loc.findOne(n => n.type === 'FRAME' && n.name === 'Map'); map.layoutSizingVertical = 'FILL'; try { map.minHeight = 210; } catch (e) { log.push('minHeight yok'); }
-    cols.remove(); log.push('Location alt satira, harita esner');
-  }
-  // Events -> Facilities icine
-  const evFrame = cols2.children.find(c => /^Events on club/.test(c.name)); const fac = cols2.children.find(c => c.name === 'Facilities');
+  const evFrame = body.children.find(c => /^Events on club/.test(c.name)); const fac = body.children.find(c => c.name === 'Facilities');
+  if (!fac) throw new Error('Facilities yok: ' + f.name);
   if (evFrame) {
     const evRows = evFrame.findAll(n => n.type === 'INSTANCE' && /^Event row/.test(n.name));
     const rowsOf = fr => /Academy/.test(fr.name) ? evRows.filter(r => /Youth/.test(r.name)) : (/Training/.test(fr.name) ? [] : evRows.filter(r => !/Youth/.test(r.name)));
@@ -65,8 +52,7 @@ async function restructure(f, key) {
       const chev = fr.children.find(c => c.name === 'Icon · chevron');
       const old = chev.findOne(n => n.type === 'VECTOR'); let colorName = 'color/icon/default';
       const sb = old && old.strokes && old.strokes[0] && old.strokes[0].boundVariables && old.strokes[0].boundVariables.color; if (sb) { const vv = await figma.variables.getVariableByIdAsync(sb.id); if (vv) colorName = vv.name; }
-      const cnt = meta.clone(); cnt.name = 'Events count'; cnt.textAutoResize = 'WIDTH_AND_HEIGHT'; fr.insertChild(fr.children.indexOf(chev), cnt);
-      await setTxt(cnt, evs.length ? evs.length + ' upcoming' : 'No upcoming events');
+      const cnt = meta.clone(); cnt.name = 'Events count'; textFrame.appendChild(cnt); await setTxt(cnt, evs.length ? evs.length + ' upcoming' : 'No upcoming events');
       const expanded = evs.length && !/Academy/.test(fr.name);
       if (evs.length) {
         for (const k of chev.children.slice()) k.remove(); const g = mkIcon(expanded ? CHEV_UP : CHEV_DOWN, colorName, 20); chev.appendChild(g); g.x = 0; g.y = 0;
@@ -79,40 +65,38 @@ async function restructure(f, key) {
     }
     evFrame.remove(); log.push('Events bolumu kalkti, ' + moved + ' etkinlik tesis satirlarina tasindi');
   }
-  fac.layoutSizingHorizontal = 'FILL';
   return log;
 }
 
 for (const key of ['full', 'women', 'staff', 'team']) {
-  await step('restructure ' + key, async () => { const f = frameOf(NAMES[key]); if (!f) throw new Error('ekran yok: ' + NAMES[key]); report.info['restructure ' + key] = await restructure(f, key); });
+  await step('restructure ' + key, async () => { const f = frameOf(NAMES[key]); if (!f) throw new Error('ekran yok: ' + NAMES[key]); report.info['restructure ' + key] = await restructure(f); });
 }
 
 await step("Women's 8 yonetici + acik ekran", async () => {
   const f = frameOf(NAMES.women); if (!f) throw new Error('Women ekran yok');
   for (const o of sec.children.filter(c => c.type === 'FRAME' && c.name === NAMES.womenOpen)) o.remove();
-  const mgmt = f.findOne(n => n.type === 'FRAME' && n.name === 'Management'); const grid = mgmt.findOne(n => n.name === 'Management grid');
-  let rows = grid.children.filter(c => /^Person row/.test(c.name));
+  const mgmt = f.findOne(n => n.type === 'FRAME' && n.name === 'Management');
+  let rows = mgmt.children.filter(c => /^Person row/.test(c.name));
   if (rows.length === 4) {
     const defs = [['Sabine Krüger', `Head of Women's Football`, 'Female'], ['Thomas Wolff', 'Managing Director', 'Male'], ['Nina Albrecht', 'Director of Finance', 'Female'], ['Markus Engel', 'Head of Marketing', 'Male']];
     for (let i = 0; i < 4; i++) {
-      const c = rows[i].clone(); grid.appendChild(c); c.name = 'Person row · ' + defs[i][0];
+      const c = rows[i].clone(); mgmt.appendChild(c); c.name = 'Person row · ' + defs[i][0];
       await setTxt(c.findOne(n => n.type === 'TEXT' && n.name === 'Name'), defs[i][0]); await setTxt(c.findOne(n => n.type === 'TEXT' && n.name === 'Meta'), defs[i][1]);
       const sil = c.findOne(n => n.type === 'INSTANCE' && n.componentProperties && 'Gender' in n.componentProperties); if (!sil) throw new Error('silüet yok: ' + c.name); sil.setProperties({ Gender: defs[i][2] });
-      c.layoutSizingVertical = 'FILL';
+      c.layoutSizingHorizontal = 'FILL';
     }
-    rows = grid.children.filter(c => /^Person row/.test(c.name));
+    rows = mgmt.children.filter(c => /^Person row/.test(c.name));
   }
   const sum = mgmt.findOne(n => n.type === 'TEXT' && n.name === 'Career summary'); await setTxt(sum, rows.length + ' people');
   let tg = mgmt.findOne(n => n.name === 'Button · Show all');
-  if (!tg) { tg = subtle().createInstance(); tg.name = 'Button · Show all'; mgmt.appendChild(tg); tg.layoutSizingHorizontal = 'HUG'; }
+  if (!tg) { tg = subtle().createInstance(); tg.name = 'Button · Show all'; mgmt.appendChild(tg); tg.layoutSizingHorizontal = 'FILL'; }
   await setLabel(tg, 'Show fewer');
   const open = f.clone(); open.name = NAMES.womenOpen; sec.appendChild(open);
-  const xs = sec.children.filter(c => c.type === 'FRAME' && c !== open).map(c => c.x).sort((a, b) => a - b); open.x = xs[xs.length - 1] + 1920; open.y = f.y;
-  // kapali ekran: son 4 satir kalkar
+  const xs = sec.children.filter(c => c.type === 'FRAME' && c !== open).map(c => c.x).sort((a, b) => a - b); open.x = xs[xs.length - 1] + 470; open.y = f.y;
   for (const r of rows.slice(4)) r.remove();
   await setLabel(tg, 'Show all ' + rows.length);
   const need = open.x + open.width + 80; if (need > sec.width) sec.resizeWithoutConstraints(R(need), R(sec.height));
-  report.info.women = { people: rows.length, collapsedRows: grid.children.filter(c => /^Person row/.test(c.name)).length, expandedRows: open.findOne(n => n.name === 'Management grid').children.filter(c => /^Person row/.test(c.name)).length, openFrame: open.name + ' ' + R(open.width) + 'x' + R(open.height) + ' @' + R(open.x) + ',' + R(open.y) };
+  report.info.women = { people: rows.length, collapsedRows: mgmt.children.filter(c => /^Person row/.test(c.name)).length, expandedRows: open.findOne(n => n.name === 'Management').children.filter(c => /^Person row/.test(c.name)).length, openFrame: open.name + ' ' + R(open.width) + 'x' + R(open.height) + ' @' + R(open.x) + ',' + R(open.y) };
 });
 
 await step('prototip (Show all / Show fewer)', async () => {
@@ -124,12 +108,12 @@ await step('prototip (Show all / Show fewer)', async () => {
 
 await step('kontrol', async () => {
   const out = {}; const frames = sec.children.filter(c => c.type === 'FRAME');
-  for (const f of frames.filter(x => /Desktop/.test(x.name) && !/Minimal/.test(x.name))) {
-    const body = bodyOf(f); const fac = f.findOne(n => n.name === 'Facilities' && n.type === 'FRAME'); const loc = f.findOne(n => n.type === 'FRAME' && /^Location ·/.test(n.name)); const map = loc ? loc.findOne(n => n.name === 'Map') : null;
-    const mg = f.findOne(n => n.type === 'FRAME' && n.name === 'Management'); const g = mg.findOne(n => n.name === 'Management grid'); const pr = g.children.filter(c => /^Person row/.test(c.name));
+  for (const f of frames.filter(x => !/Minimal/.test(x.name))) {
+    const body = bodyOf(f); const fac = f.findOne(n => n.name === 'Facilities' && n.type === 'FRAME'); const mg = f.findOne(n => n.type === 'FRAME' && n.name === 'Management');
     const bad = []; for (const t of f.findAll(n => n.type === 'TEXT' && n.visible !== false)) if (!t.textStyleId) bad.push(String(t.characters).slice(0, 18));
     const over = []; for (const c of body.children) { const b = BB(c), bb = BB(body); if (b.x + b.width > bb.x + bb.width + 0.5) over.push(c.name); }
-    out[f.name.replace('Clubs / Club card', '').trim() || 'Full'] = { size: R(f.width) + 'x' + R(f.height), body: body.children.map(c => c.name + ' ' + R(c.height)), people: pr.length, rowWidths: [...new Set(pr.map(r => R(r.width)))].join(','), gridRows: R(g.height), facilitiesVsLocation: fac && loc ? R(fac.height) + ' / ' + R(loc.height) + ' (esit: ' + (R(fac.height) === R(loc.height)) + ')' : '-', mapHeight: map ? R(map.height) : '-', unstyled: bad.length ? bad : 0, bodyOverflow: over.length ? over : 'none', eventRowsInFacilities: fac ? fac.findAll(n => n.type === 'INSTANCE' && /^Event row/.test(n.name)).length : 0, womenNoteLeft: !!f.findOne(n => /^Note · Women/.test(n.name)) };
+    const facOver = []; if (fac) for (const n of fac.findAll(x => x.visible !== false && x.type !== 'VECTOR')) { const b = BB(n), fb = BB(fac); if (b && fb && b.x + b.width > fb.x + fb.width + 0.5) facOver.push(n.name); }
+    out[f.name.replace('Clubs / Club card', '').trim() || 'Full'] = { size: R(f.width) + 'x' + R(f.height), body: body.children.map(c => c.name + ' ' + R(c.height)), people: mg.children.filter(c => /^Person row/.test(c.name)).length, eventRowsInFacilities: fac.findAll(n => n.type === 'INSTANCE' && /^Event row/.test(n.name)).length, facilityRowHeights: fac.findAll(n => n.type === 'FRAME' && /^Facility ·/.test(n.name)).map(n => R(n.height)).join(','), unstyled: bad.length ? bad : 0, bodyOverflow: over.length ? over : 'none', facilitiesOverflow: facOver.length ? facOver.slice(0, 4) : 'none', womenNoteLeft: !!f.findOne(n => /^Note · Women/.test(n.name)) };
   }
   let ov = 0; for (let i = 0; i < frames.length; i++) for (let j = i + 1; j < frames.length; j++) { const A = frames[i], B = frames[j]; if (A.x < B.x + B.width && B.x < A.x + A.width && A.y < B.y + B.height && B.y < A.y + A.height) ov++; }
   out.sectionFrameOverlaps = ov; out.section = R(sec.width) + 'x' + R(sec.height) + ' insidePlatform ' + (sec.x + sec.width <= web.width);
