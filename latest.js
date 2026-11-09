@@ -1,4 +1,4 @@
-// step 361 · Shortlists mevki filtresi: 15 çip yerine Select alanı + açılır liste (yeni Position menu component'i, Position list open ekranları, prototip)
+// step 362 · Shortlists mevki filtresi (361'in düzeltmesi: overflowDirection = VERTICAL): Select alanı + yeni Position menu + Position list open ekranları + prototip
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const p01 = figma.root.children.find(p => /^01/.test(p.name)); await p01.loadAsync();
@@ -51,7 +51,7 @@ await step('Position menu component', async () => {
   c.description = 'Scrollable list of all 15 database positions plus All positions. Used by the Shortlists position filter. Prototype scrolls vertically.';
   c.resize(400, MENU_H);
   c.clipsContent = true;
-  c.overflowDirection = 'VERTICAL_SCROLLING';
+  c.overflowDirection = 'VERTICAL';
   menuComp = c;
   const need = R(c.y + c.height + 80);
   if (need > sec.height) sec.resizeWithoutConstraints(sec.width, need);
