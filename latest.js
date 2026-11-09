@@ -1,4 +1,4 @@
-// step 345 · Kulüp kartı: masaüstü Location kartının alt kenarı Management ile hizalı; mobil hero'da arma + ad yan yana, gri kutu ve büyük arma kalkar
+// step 345 · Kulüp kartı: Location/Management alt hizası; mobil hero'da arma + ad yan yana, gri kutu kalkar; mobil League tam satır (sabit genişlik); Events'e 3. satır + Events/Facilities yükseklik eşitleme
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
@@ -46,5 +46,29 @@ await step('Boyutlar', async () => {
   sWeb.resizeWithoutConstraints(1600, Math.ceil(100 + fd.height + 80)); sMob.resizeWithoutConstraints(560, Math.ceil(100 + fm.height + 80));
   report.info.sizes = 'desktop ' + sz(fd) + ' mobile ' + sz(fm);
   const hero = fm.findOne(n => n.name === 'Hero · stadium identity'); report.info.mobileHero = sz(hero) + ' | ' + hero.children.map(c => c.name + ' ' + sz(c)).join(' | ');
+});
+
+await step('Mobil: League kendi satırında (sabit genişlik)', async () => {
+  const hero = fm.findOne(n => n.name === 'Hero · stadium identity'); const lg = hero.findOne(n => n.name === 'Fact · League'); if (!lg) throw new Error('Fact · League yok');
+  const kf = lg.parent; lg.layoutSizingHorizontal = 'FIXED'; lg.resize(Math.round(kf.width), lg.height);
+  const pb = hero.absoluteBoundingBox; report.info.mobileFacts = hero.findAll(n => /^Fact · /.test(n.name)).map(x => { const a = x.absoluteBoundingBox; return x.name + ' x=' + Math.round(a.x - pb.x) + ' y=' + Math.round(a.y - pb.y) + ' ' + sz(x); });
+});
+
+async function loadFor(t) { const fs = t.getRangeAllFontNames(0, Math.max(1, t.characters.length)); for (const f of fs) await figma.loadFontAsync(f); }
+async function setT(root, name, str) { const t = root.findAll(n => n.type === 'TEXT' && n.name === name)[0]; if (!t) { report.errors.push('metin yok: ' + name); return; } await loadFor(t); t.characters = str; }
+await step('Events 3. satır ve yükseklik eşitleme', async () => {
+  for (const [f, dev] of [[fd, 'Desktop'], [fm, 'Mobile']]) {
+    const card = f.findOne(n => n.name === "Events on club's facilities"); if (!card) throw new Error('events kartı yok ' + dev);
+    const rows = card.findAll(n => n.type === 'INSTANCE' && /^Event row/.test(n.name)); if (rows.length >= 3) { report.info['events ' + dev] = 'zaten 3'; continue; }
+    const c = rows[rows.length - 1].clone(); c.name = 'Event row · Spreeufer Youth Open Day'; card.appendChild(c); c.layoutSizingHorizontal = 'FILL';
+    await setT(c, 'Event name', 'Spreeufer Youth Open Day'); await setT(c, 'Month', 'NOV'); await setT(c, 'Day', '22'); await setT(c, 'Dates', '22 Nov'); await setT(c, 'Location', 'Spreeufer Training Ground, Berlin');
+    await setT(card.children[0], 'Career summary', '3 upcoming');
+    report.info['events ' + dev] = card.findAll(n => n.type === 'INSTANCE' && /^Event row/.test(n.name)).length + ' satır, kart ' + sz(card);
+  }
+  const r2 = fd.findOne(n => n.name === 'Profile columns 2'); const ev = r2.children[0], fac = r2.children[1];
+  ev.layoutSizingVertical = 'FILL'; fac.layoutSizingVertical = 'FILL';
+  report.info.row2 = r2.children.map(c => c.name + ' ' + sz(c));
+  sWeb.resizeWithoutConstraints(1600, Math.ceil(100 + fd.height + 80)); sMob.resizeWithoutConstraints(560, Math.ceil(100 + fm.height + 80));
+  report.info.sizes2 = 'desktop ' + sz(fd) + ' mobile ' + sz(fm);
 });
 return report;
