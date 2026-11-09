@@ -1,4 +1,4 @@
-// step 354 · Kulüp kartı Staff sekmesi (masaüstü + mobil, Full ekranın kopyasından) + Team select Open varyantının salt okunur dökümü
+// step 355 · Kulüp kartı Team list open ekranı (masaüstü + mobil): Team select Open varyantı, Full ekranın kopyasında; menü en üstte (ABS), yerine boşluk tutucu
 const report = { done: [], errors: [], info: { dimsMissing: [] } };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const p01 = figma.root.children.find(p => /^01/.test(p.name)); await p01.loadAsync();
@@ -15,35 +15,32 @@ if (!fdFull || !fmFull) throw new Error('Full frame yok');
 async function loadFor(t) { const fs = t.getRangeAllFontNames(0, Math.max(1, t.characters.length)); for (const f of fs) await figma.loadFontAsync(f); }
 async function setT(root, name, str, nth) { const t = root.findAll(n => n.type === 'TEXT' && n.name === name)[nth || 0]; if (!t) throw new Error('metin yok: ' + name + ' in ' + root.name + ' (var: ' + root.findAll(n => n.type === 'TEXT').slice(0, 8).map(n => n.name).join(',') + ')'); await loadFor(t); t.characters = str; return t; }
 const fill = n => { n.layoutSizingHorizontal = 'FILL'; };
-for (const [s, re] of [[sWeb, /Staff tab · Desktop$/], [sMob, /Staff tab · Mobile$/]]) for (const f of s.children.filter(n => re.test(n.name))) f.remove();
-const STAFF = [['Jonas Richter', 'Head coach', 'Male'], ['Tim Becker', 'Assistant coach', 'Male'], ['Sven Hoffmann', 'Goalkeeping coach', 'Male'], ['Katrin Lehmann', 'Fitness coach', 'Female'], ['Paul Neumann', 'Video analyst', 'Male'], ['Lena Fischer', 'Team doctor', 'Female']];
+for (const [s, re] of [[sWeb, /Team list open · Desktop$/], [sMob, /Team list open · Mobile$/]]) for (const f of s.children.filter(n => re.test(n.name))) f.remove();
 async function cleanReactions(root) { let n = 0; for (const x of [root].concat(root.findAll(() => true))) { try { if ('reactions' in x && x.reactions && x.reactions.length) { const keep = x.reactions.filter(r => !(r.actions || []).some(a => a && a.type === 'NODE' && a.navigation !== 'CHANGE_TO')); if (keep.length !== x.reactions.length) { await x.setReactionsAsync(keep); n++; } } } catch (e) {} } return n; }
 const made = {};
-async function staffFrame(src, dev, slotX) {
-  const mobile = dev === 'Mobile'; const f = src.clone(); f.name = 'Clubs / Club card / Staff tab · ' + dev; (mobile ? sMob : sWeb).appendChild(f); f.x = slotX; f.y = 100;
+async function replAll(root, from, to) { const ts = root.findAll(n => n.type === 'TEXT' && n.characters === from); for (const t of ts) { await loadFor(t); t.characters = to; } return ts.length; }
+async function openFrame(src, dev, slotX) {
+  const mobile = dev === 'Mobile'; const f = src.clone(); f.name = 'Clubs / Club card / Team list open · ' + dev; (mobile ? sMob : sWeb).appendChild(f); f.x = slotX; f.y = 100;
   const teams = f.findOne(n => n.name === 'Teams'); if (!teams) throw new Error('Teams kartı yok');
-  const tabs = teams.findOne(n => n.name === 'Squad tabs'); if (!tabs) throw new Error('Squad tabs yok (var: ' + teams.children.map(c => c.name).join(',') + ')');
-  const chipDefault = variantOf('Filter chip', /State=Default/), chipSel = variantOf('Filter chip', /State=Selected/);
-  const chips = tabs.children.filter(c => c.type === 'INSTANCE');
-  if (chips.length !== 2) throw new Error('çip sayısı ' + chips.length);
-  chips[0].swapComponent(chipDefault); chips[1].swapComponent(chipSel);
-  await setT(chips[0], 'Label', 'Players · 23'); await setT(chips[1], 'Label', 'Staff · 6');
-  chips[0].name = 'Filter chip · Players · 23'; chips[1].name = 'Filter chip · Staff · 6';
-  // oyuncu tablosu başlığı ve oyuncu satırları kalkar, yerine Person row'lar
-  const removed = [];
-  for (const c of teams.children.slice()) { if (c === tabs) continue; if (c.name === 'Table header' || /Player result|Player row/.test(c.name) || (c.type === 'INSTANCE' && c.findOne(n => n.name === 'Actions'))) { removed.push(c.name); c.remove(); } }
-  const pv = variantOf('Person row', /State=Default/);
-  const genders = [];
-  for (const [n, r, g] of STAFF) {
-    const p = pv.createInstance(); p.name = 'Person row · ' + n; teams.appendChild(p); fill(p); await setT(p, 'Name', n); await setT(p, 'Meta', r);
-    for (const s of p.findAll(x => x.type === 'INSTANCE' && x.componentProperties && Object.keys(x.componentProperties).some(k => /^Gender/.test(k)))) { const key = Object.keys(s.componentProperties).find(k => /^Gender/.test(k)); try { s.setProperties({ [key]: g }); genders.push(n + ':' + g); } catch (e) { report.errors.push('gender ' + n + ': ' + e.message); } }
-  }
-  const head = teams.children[0]; if (head && head.type !== 'TEXT') { const sm = head.findAll(n => n.type === 'TEXT' && /teams?$/.test(n.characters))[0]; if (sm) { await loadFor(sm); sm.characters = '4 teams'; } }
-  report.info['removed ' + dev] = removed; report.info['genders ' + dev] = genders.length + ' / ' + STAFF.length;
+  const old = teams.children.find(c => c.type === 'INSTANCE' && c.name === 'Team select') || teams.children.find(c => c.type === 'INSTANCE' && /Team select/.test(c.name)); if (!old) throw new Error('Team select yok (var: ' + teams.children.map(c => c.name).join(',') + ')');
+  const idx = teams.children.indexOf(old), ow = old.width, oh = old.height, ox = old.x, oy = old.y;
+  old.swapComponent(variantOf('Team select', new RegExp('Device=' + dev + ', State=Open')));
+  const ts = old; ts.name = 'Team select · Open';
+  const n1 = await replAll(ts, 'Riverside FC', 'Spreeufer FC');
+  await replAll(ts, 'Riverside FC B', 'Spreeufer FC B'); await replAll(ts, 'Riverside FC U19', 'Spreeufer FC U19'); await replAll(ts, 'Riverside FC Women', 'Spreeufer FC Women');
+  await replAll(ts, 'Third Division · Tier 3', 'Regionalliga Nordost · Tier 4'); await replAll(ts, 'Third Division', 'Regionalliga Nordost'); await replAll(ts, 'Tier 3', 'Tier 4');
+  await replAll(ts, 'Fifth Division · Tier 5', 'Oberliga NOFV-Nord · Tier 5'); await replAll(ts, "Women's Premier · Tier 1", 'Frauen Regionalliga · Tier 3');
+  for (const r of ts.findAll(x => /^Row · /.test(x.name))) r.name = r.name.replace('Riverside', 'Spreeufer');
+  // menü diğer öğelerin üstünde dursun: Team select ABS + son çocuk, yerine aynı yükseklikte boşluk tutucu
+  const sp = figma.createFrame(); sp.name = 'Team select spacer'; sp.fills = []; sp.clipsContent = false; teams.insertChild(idx, sp); sp.layoutSizingHorizontal = 'FILL'; sp.resize(sp.width, ts.height); sp.layoutSizingVertical = 'FIXED';
+  teams.appendChild(ts); ts.layoutPositioning = 'ABSOLUTE'; ts.x = ox; ts.y = oy; ts.resize(ow, ts.height);
+  const clipped = []; let a = teams; while (a && a !== f.parent) { if ('clipsContent' in a && a.clipsContent && a !== f) { clipped.push(a.name); a.clipsContent = false; } a = a.parent; }
+  const menu = ts.findOne(n => n.name === 'Menu'); const mb = menu.absoluteBoundingBox, tb = teams.absoluteBoundingBox, fb = f.absoluteBoundingBox;
+  report.info['open ' + dev] = { replacedField: n1, spacerH: Math.round(sp.height), tsSize: sz(ts), menu: Math.round(mb.x - fb.x) + ',' + Math.round(mb.y - fb.y) + ' ' + Math.round(mb.width) + 'x' + Math.round(mb.height), menuInsideTeams: mb.y + mb.height <= tb.y + tb.height + 1 && mb.x >= tb.x - 1 && mb.x + mb.width <= tb.x + tb.width + 1, menuInsideFrame: mb.y + mb.height <= fb.y + fb.height, unclipped: clipped };
   made[dev] = f; return f;
 }
-await step('Masaüstü Staff tab', async () => { await staffFrame(fdFull, 'Desktop', 80 + 3 * 1920); });
-await step('Mobil Staff tab', async () => { await staffFrame(fmFull, 'Mobile', 80 + 3 * 470); });
+await step('Masaüstü Team list open', async () => { await openFrame(fdFull, 'Desktop', 80 + 4 * 1920); });
+await step('Mobil Team list open', async () => { await openFrame(fmFull, 'Mobile', 80 + 4 * 470); });
 
 await step('Temizlik ve boyutlar', async () => {
   const c = []; for (const k in made) c.push(k + ':' + await cleanReactions(made[k])); report.info.reactionsCleared = c;
@@ -51,25 +48,12 @@ await step('Temizlik ve boyutlar', async () => {
   const hD = Math.max(...sWeb.children.filter(n => n.type === 'FRAME').map(n => n.height)), hM = Math.max(...sMob.children.filter(n => n.type === 'FRAME').map(n => n.height));
   sWeb.resizeWithoutConstraints(80 + 4 * 1920 + 1440 + 80, Math.ceil(100 + hD + 80)); sMob.resizeWithoutConstraints(80 + 4 * 470 + 390 + 80, Math.ceil(100 + hM + 80));
   for (const [plat, s] of [[web, sWeb], [mob, sMob]]) plat.resizeWithoutConstraints(Math.max(plat.width, Math.ceil(s.x + s.width + 120)), Math.max(plat.height, Math.ceil(s.y + s.height + 120)));
-  report.info.sizes = ['Web section ' + sz(sWeb), 'Mobile section ' + sz(sMob), 'platform Web ' + sz(web) + ' Mobile ' + sz(mob)];
+  report.info.sizes = ['Web section ' + sz(sWeb), 'Mobile section ' + sz(sMob)];
 });
-
 await step('Kontrol', async () => {
   const out = {};
-  for (const k in made) { const f = made[k]; let gray = 0, unstyled = 0, over = 0; const teams = f.findOne(n => n.name === 'Teams'); for (const n of f.findAll(() => true)) { if (n.type === 'TEXT' && !(typeof n.textStyleId === 'string' && n.textStyleId)) unstyled++; if ('fills' in n && Array.isArray(n.fills)) for (const p of n.fills) if (p.type === 'SOLID' && Math.abs(p.color.r - .5) < .01 && Math.abs(p.color.g - .5) < .01 && Math.abs(p.color.b - .5) < .01) gray++; }
-    for (const c of teams.children) { if (c.width > teams.width + 1) over++; }
-    out[f.name] = sz(f) + ' gray ' + gray + ' unstyled ' + unstyled + ' teamsOver ' + over + ' | teams: ' + teams.children.map(c => c.name).join(' > ') + ' | body: ' + f.findOne(n => n.name === 'Profile body').children.map(c => c.name).join(' > '); }
+  for (const k in made) { const f = made[k]; let gray = 0, unstyled = 0, riverside = 0; for (const n of f.findAll(() => true)) { if (n.type === 'TEXT') { if (!(typeof n.textStyleId === 'string' && n.textStyleId)) unstyled++; if (/Riverside|Third Division|Fifth Division/.test(n.characters)) riverside++; } if ('fills' in n && Array.isArray(n.fills)) for (const p of n.fills) if (p.type === 'SOLID' && Math.abs(p.color.r - .5) < .01 && Math.abs(p.color.g - .5) < .01 && Math.abs(p.color.b - .5) < .01) gray++; }
+    out[f.name] = sz(f) + ' gray ' + gray + ' unstyled ' + unstyled + ' kalanRiversideMetni ' + riverside; }
   report.info.check = out;
-});
-
-// Team select Open: salt okunur döküm (355 için)
-await step('Team select Open dökümü', async () => {
-  const s = sets.find(n => n.name === 'Team select'); const info = [];
-  for (const v of s.children.filter(c => /State=Open/.test(c.name))) {
-    const lines = [v.name + ' ' + sz(v)];
-    const walk = (n, d) => { if (d > 6) return; const t = n.type === 'TEXT' ? ' "' + n.characters + '" style=' + (typeof n.textStyleId === 'string' && n.textStyleId ? 'ok' : 'none') : ''; lines.push('  '.repeat(d) + n.type + ' ' + n.name + ' ' + sz(n) + (n.layoutPositioning === 'ABSOLUTE' ? ' ABS@' + Math.round(n.x) + ',' + Math.round(n.y) : '') + t); if ('children' in n && n.type !== 'INSTANCE' || (n.type === 'INSTANCE' && d < 4)) for (const c of n.children || []) walk(c, d + 1); };
-    walk(v, 0); info.push(lines.join('\n'));
-  }
-  report.info.teamSelectOpen = info;
 });
 return report;
