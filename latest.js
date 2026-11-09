@@ -1,44 +1,36 @@
-// step 349 · Club crest › Club=No crest: gri dolgulu, tepesi sivri kavisli kalkan, çerçeveyi boşluksuz doldurur; ayrıca Women's club etiketinin hero'daki yerini ölçer (salt okunur)
+// step 350 · Silüet cinsiyeti ad ile uyumlu olsun: tüm 02 · Website ekranlarında kadın adı + erkek silüeti (ve tersi) bulunur, ad listesinden eşleşenler düzeltilir; listede olmayan adlar raporlanır
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
-const p01 = figma.root.children.find(p => /^01/.test(p.name)); await p01.loadAsync();
 const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
 await figma.setCurrentPageAsync(p02);
-const sz = n => Math.round(n.width) + 'x' + Math.round(n.height);
-
-await step('Club=No crest kalkanı', async () => {
-  const set = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Club crest');
-  if (!set) throw new Error('Club crest seti yok');
-  const targets = set.children.filter(v => /Club=No crest/.test(v.name));
-  if (!targets.length) throw new Error('Club=No crest varyantı yok');
-  const d = 'M50 3 C38 11 24 15 6 15 V58 C6 88 26 104 50 113 C74 104 94 88 94 58 V15 C76 15 62 11 50 3 Z';
-  report.info.crest = [];
-  for (const v of targets) {
-    const before = v.children.map(c => c.name + ' ' + sz(c));
-    let h = v.height, w = h * 100 / 116;
-    if (w > v.width) { w = v.width; h = w * 116 / 100; }
-    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 100 116"><path d="' + d + '" fill="#E3E6E4" stroke="#B4BAB6" stroke-width="3" stroke-linejoin="round"/></svg>';
-    const shield = figma.createNodeFromSvg(svg); shield.name = 'Shield';
-    for (const c of [...v.children]) c.remove();
-    v.appendChild(shield);
-    if (v.layoutMode === 'NONE') { shield.x = (v.width - shield.width) / 2; shield.y = (v.height - shield.height) / 2; }
-    report.info.crest.push({ variant: v.name, frame: sz(v), before, shield: sz(shield), layout: v.layoutMode });
+const F = new Set('anna maria sofia sophia ana lena julia katrin katharina sabine laura elena emma sara sarah lisa nina eva marta clara hanna hannah mia lea johanna charlotte ingrid helena petra monika claudia nadine anja alexandra sandra jana olga irina natalia svetlana elisa giulia chiara camille marie sophie emily emilia amelie lara lina nora ida greta heidi birgit ursula karin kristina christina maja hilda'.split(' '));
+const M = new Set('peter lukas luca tom jake leo hans jan marco mateus david michael thomas martin stefan andreas markus daniel felix max paul jonas tim nico carlos joao miguel pedro ivan sergey alexander oliver james john mark jack klaus jürgen matthias florian tobias sebastian erik lars henrik ole jens'.split(' '));
+const nameRe = /^[A-ZÀ-Ý][\p{L}.'’-]+(\s+[A-ZÀ-Ý][\p{L}'’-]+)+$/u;
+const screenOf = n => { let q = n; while (q.parent && q.parent.type !== 'SECTION' && q.parent.type !== 'PAGE') q = q.parent; return q.name; };
+const seen = {}, fixed = {}, unknown = {};
+await step('Silüet cinsiyeti taraması', async () => {
+  const sil = p02.findAll(n => n.type === 'INSTANCE' && n.componentProperties && n.componentProperties['Gender'] && n.componentProperties['Role']);
+  report.info.silhouettes = sil.length;
+  for (const s of sil) {
+    let q = s.parent, cand = null, anc = null;
+    for (let i = 0; i < 5 && q && q.type !== 'SECTION' && q.type !== 'PAGE'; i++, q = q.parent) {
+      if (q.findAll(n => n.type === 'INSTANCE' && n.componentProperties && n.componentProperties['Gender'] && n.componentProperties['Role']).length > 1) break;
+      const texts = q.findAll(n => n.type === 'TEXT' && nameRe.test(n.characters.trim()));
+      if (texts.length) { cand = texts; anc = q; break; }
+    }
+    if (!cand) continue;
+    const hit = cand.find(t => { const f = t.characters.trim().split(/\s+/)[0].toLowerCase(); return F.has(f) || M.has(f); });
+    const gender = s.componentProperties['Gender'].value;
+    if (!hit) { const k = cand[0].characters.trim(); unknown[k] = (unknown[k] || 0) + 1; continue; }
+    const nm = hit.characters.trim(), want = F.has(nm.split(/\s+/)[0].toLowerCase()) ? 'Female' : 'Male';
+    const key = nm + ' | ' + gender;
+    if (!seen[key]) seen[key] = { n: 0, screens: [] };
+    seen[key].n++; if (seen[key].screens.length < 3) seen[key].screens.push(screenOf(s));
+    if (gender !== want) { s.setProperties({ Gender: want }); const fk = nm + ': ' + gender + ' -> ' + want; fixed[fk] = (fixed[fk] || 0) + 1; }
   }
 });
-
-await step("Women's etiketi (ölçüm)", async () => {
-  report.info.women = [];
-  for (const dev of ['Desktop', 'Mobile']) {
-    const f = p02.findAll(n => n.type === 'FRAME' && n.name === "Clubs / Club card / Women's club · " + dev)[0];
-    if (!f) { report.info.women.push(dev + ': frame yok'); continue; }
-    const hero = f.findOne(n => n.name === 'Hero · stadium identity');
-    const tag = f.findOne(n => n.name === "Tag · Women's club");
-    if (!tag) { report.info.women.push(dev + ': etiket yok'); continue; }
-    const chain = []; let q = tag.parent; while (q && q !== f) { chain.push(q.name); q = q.parent; }
-    const lab = tag.findOne(n => n.type === 'TEXT');
-    report.info.women.push({ dev, hero: hero ? sz(hero) : null, tag: sz(tag), visible: tag.visible, chain: chain.join(' < '), tagY: Math.round(tag.absoluteBoundingBox.y - (hero ? hero.absoluteBoundingBox.y : 0)), font: lab ? lab.fontSize + ' ' + (lab.fontName.style || '') : null });
-  }
-});
-
-figma.notify(report.errors.length ? 'step 349: ' + report.errors.length + ' hata' : 'step 349 tamam');
+report.info.fixed = fixed;
+report.info.unknownNames = unknown;
+report.info.checked = seen;
+figma.notify(report.errors.length ? 'step 350: ' + report.errors.length + ' hata' : 'step 350: ' + Object.values(fixed).reduce((a, b) => a + b, 0) + ' silüet düzeltildi');
 return report;
