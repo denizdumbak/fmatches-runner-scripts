@@ -1,35 +1,89 @@
-// step 356 · Team list open düzeltmesi: menü genişliği alan genişliğine eşitlenir (instance detach), artan Riverside metninin yeri raporlanır
-const report = { done: [], errors: [], info: { dimsMissing: [] } };
+// step 357 · kulüp kartı prototip bağlantıları (yalnız ideal senaryo, ok çizilmez): Club result -> Club card, stadyum Tenants Club strip -> Club card, Players satırı -> profil, Players/Staff çipleri -> Staff tab, akış başlangıcı
+const report = { done: [], errors: [], info: { links: [], skipped: [], candidates: {} } };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
-const p01 = figma.root.children.find(p => /^01/.test(p.name)); await p01.loadAsync();
 const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
-await figma.setCurrentPageAsync(p02);
 const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web');
 const mob = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
-const sz = n => Math.round(n.width) + 'x' + Math.round(n.height);
-const sets = p01.findAll(n => n.type === 'COMPONENT_SET' || (n.type === 'COMPONENT' && n.parent && n.parent.type !== 'COMPONENT_SET'));
-const variantOf = (nm, re) => { const s = sets.find(n => n.name === nm); if (!s) throw new Error('component yok: ' + nm); const v = s.type === 'COMPONENT_SET' ? s.children.find(c => re.test(c.name)) : s; if (!v) throw new Error('varyant yok: ' + nm + ' ' + re); return v; };
-const sWeb = web.children.find(n => n.type === 'SECTION' && n.name === 'Club card'), sMob = mob.children.find(n => n.type === 'SECTION' && n.name === 'Club card'); if (!sWeb || !sMob) throw new Error('Club card Section yok');
-const fdFull = sWeb.children.find(n => n.type === 'FRAME' && /Club card · Desktop$/.test(n.name)), fmFull = sMob.children.find(n => n.type === 'FRAME' && /Club card · Mobile$/.test(n.name));
-if (!fdFull || !fmFull) throw new Error('Full frame yok');
-async function loadFor(t) { const fs = t.getRangeAllFontNames(0, Math.max(1, t.characters.length)); for (const f of fs) await figma.loadFontAsync(f); }
-async function setT(root, name, str, nth) { const t = root.findAll(n => n.type === 'TEXT' && n.name === name)[nth || 0]; if (!t) throw new Error('metin yok: ' + name + ' in ' + root.name + ' (var: ' + root.findAll(n => n.type === 'TEXT').slice(0, 8).map(n => n.name).join(',') + ')'); await loadFor(t); t.characters = str; return t; }
-const fill = n => { n.layoutSizingHorizontal = 'FILL'; };
-const out = {};
-for (const dev of ['Desktop', 'Mobile']) {
-  await step(dev + ' menü genişliği', async () => {
-    const s = dev === 'Mobile' ? sMob : sWeb; const f = s.children.find(n => n.type === 'FRAME' && new RegExp('Team list open · ' + dev + '$').test(n.name)); if (!f) throw new Error('frame yok');
-    const teams = f.findOne(n => n.name === 'Teams'); let ts = teams.children.find(c => c.name === 'Team select · Open'); if (!ts) throw new Error('Team select · Open yok (var: ' + teams.children.map(c => c.name).join(',') + ')');
-    const before = { ts: sz(ts), type: ts.type };
-    if (ts.type === 'INSTANCE') { const x = ts.x, y = ts.y; ts = ts.detachInstance(); ts.name = 'Team select · Open'; ts.layoutPositioning = 'ABSOLUTE'; ts.x = x; ts.y = y; }
-    const menu = ts.findOne(n => n.name === 'Menu'); const mb0 = sz(menu);
-    menu.resize(ts.width, menu.height);
-    for (const r of menu.children) { try { r.layoutSizingHorizontal = 'FILL'; } catch (e) {} }
-    const field = ts.findOne(n => n.name === 'Field');
-    const mb = menu.absoluteBoundingBox, tb = teams.absoluteBoundingBox, fb = f.absoluteBoundingBox, fdb = field.absoluteBoundingBox;
-    const left = []; for (const t of f.findAll(n => n.type === 'TEXT' && /Riverside|Third Division|Fifth Division/.test(n.characters))) left.push('"' + t.characters + '" in ' + (t.parent ? t.parent.name : '-') + ' > ' + (t.parent && t.parent.parent ? t.parent.parent.name : '-'));
-    out[dev] = { before, after: sz(ts) + ' menu ' + mb0 + ' -> ' + sz(menu), menuMatchesField: Math.round(mb.x) === Math.round(fdb.x) && Math.round(mb.width) === Math.round(fdb.width), menuInsideTeams: mb.y + mb.height <= tb.y + tb.height + 1 && mb.x >= tb.x - 1 && mb.x + mb.width <= tb.x + tb.width + 1, menuInsideFrameX: mb.x >= fb.x && mb.x + mb.width <= fb.x + fb.width, rowWidths: menu.children.map(r => Math.round(r.width)).join(','), leftoverText: left };
-  });
+const sub = (plat, re) => plat.children.find(n => n.type === 'SECTION' && re.test(n.name));
+const frames = sec => (sec ? sec.children.filter(n => n.type === 'FRAME') : []);
+const nav = dest => ({ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'NODE', destinationId: dest.id, navigation: 'NAVIGATE', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.3 }, preserveScrollPosition: false, resetVideoPosition: false }] });
+const isNavAct = a => a && a.type === 'NODE' && a.navigation !== 'CHANGE_TO';
+async function link(label, el, dest) {
+  if (!el) { report.info.skipped.push(label + ': öğe yok'); return false; }
+  if (!dest) { report.info.skipped.push(label + ': hedef yok'); return false; }
+  const keep = (el.reactions || []).filter(r => !(r.actions || []).some(isNavAct));
+  await el.setReactionsAsync(keep.concat([nav(dest)])); report.info.links.push(label); return true;
 }
-report.info.fix = out;
+const find1 = (sec, res) => { for (const re of res) { const f = frames(sec).find(x => re.test(x.name)); if (f) return f; } return null; };
+const textOf = n => { const t = n.findOne(x => x.type === 'TEXT'); return t ? t.characters : ''; };
+const miss = (key, root, re) => { if (!root) return; const seen = {}; root.findAll(n => n.type === 'INSTANCE' && re.test(n.name)).forEach(n => { seen[n.name] = (seen[n.name] || 0) + 1; }); report.info.candidates[key] = Object.keys(seen).slice(0, 25).map(k => k + ' x' + seen[k]); };
+
+const clubW = sub(web, /^Club card$/), clubM = sub(mob, /^Club card$/);
+const stadW = sub(web, /^Stadium card$/), stadM = sub(mob, /^Stadium card$/);
+const searchW = sub(web, /^Search results$/), searchM = sub(mob, /^Search results$/);
+const K = {
+  D: {
+    full: find1(clubW, [/^Clubs \/ Club card · Desktop$/]), staff: find1(clubW, [/Staff tab · Desktop$/]), women: find1(clubW, [/Women's club · Desktop$/]),
+    stadium: find1(stadW, [/^Facilities \/ Stadium card · Desktop$/]), profile: find1(sub(web, /^Profiles · player$/), [/^Profiles \/ Player · Desktop$/, /^Profiles \/ Player.*· Desktop$/]),
+    all: find1(searchW, [/^Search \/ All results · Desktop$/]), clubs: find1(searchW, [/^Search \/ Clubs · Desktop$/])
+  },
+  M: {
+    full: find1(clubM, [/^Clubs \/ Club card · Mobile$/]), staff: find1(clubM, [/Staff tab · Mobile$/]), women: find1(clubM, [/Women's club · Mobile$/]),
+    stadium: find1(stadM, [/^Facilities \/ Stadium card · Mobile$/]), profile: find1(sub(mob, /^Profiles · player$/), [/^Profiles \/ Player · Mobile$/, /^Profiles \/ Player.*· Mobile$/]),
+    all: find1(searchM, [/^Search \/ All results · Mobile$/]), clubs: find1(searchM, [/^Search \/ Clubs · Mobile$/])
+  }
+};
+report.info.targets = ['D', 'M'].map(k => k + ': ' + Object.keys(K[k]).map(x => x + '=' + (K[k][x] ? 'ok' : 'YOK')).join(' '));
+
+await step('Club result -> Club card', async () => {
+  for (const k of ['D', 'M']) for (const nm of ['all', 'clubs']) {
+    const fr = K[k][nm]; if (!fr) continue;
+    const btn = fr.findOne(n => n.type === 'INSTANCE' && /^Button · View club$/.test(n.name));
+    if (!btn) miss(`${k} ${nm} Club result`, fr, /Club|View/i);
+    await link(`${k} ${nm} first club -> Club card`, btn, K[k].full);
+  }
+});
+await step('stadium tenants -> Club card', async () => {
+  for (const k of ['D', 'M']) {
+    const fr = K[k].stadium; if (!fr) continue;
+    const strips = fr.findAll(n => n.type === 'INSTANCE' && /^Club strip/.test(n.name));
+    if (!strips.length) miss(`${k} stadium strip`, fr, /Club|Tenant|strip/i);
+    for (const s of strips) {
+      const tx = s.findAll(n => n.type === 'TEXT').map(t => t.characters).join(' ');
+      if (/Spreeufer/.test(tx)) await link(`${k} stadium strip Spreeufer FC -> Club card`, s, K[k].full);
+      else if (/Nordpark/.test(tx)) await link(`${k} stadium strip Nordpark SC -> Women's club`, s, K[k].women);
+      else report.info.skipped.push(`${k} stadium strip: ad tanınmadı (${tx.slice(0, 40)})`);
+    }
+  }
+});
+await step('Players row -> profile, chips', async () => {
+  for (const k of ['D', 'M']) {
+    const full = K[k].full, staff = K[k].staff;
+    if (full) {
+      const row = full.findOne(n => n.type === 'INSTANCE' && /^Player ·/.test(n.name));
+      if (!row) miss(`${k} full Player row`, full, /Player|Result/i);
+      await link(`${k} Club card first player -> profile`, row, K[k].profile);
+      const chip = full.findOne(n => n.type === 'INSTANCE' && /chip/i.test(n.name) && /^Staff/.test(textOf(n)));
+      if (!chip) miss(`${k} full chips`, full, /chip|tab/i);
+      await link(`${k} Club card Staff chip -> Staff tab`, chip, staff);
+    }
+    if (staff) {
+      const chip = staff.findOne(n => n.type === 'INSTANCE' && /chip/i.test(n.name) && /^Players/.test(textOf(n)));
+      if (!chip) miss(`${k} staff chips`, staff, /chip|tab/i);
+      await link(`${k} Staff tab Players chip -> Club card`, chip, full);
+    }
+  }
+});
+await step('flow starts', async () => {
+  const now = p02.flowStartingPoints.slice(); const add = [];
+  for (const [nm, k] of [['Web · Club card', 'D'], ['Mobile · Club card', 'M']]) { const f = K[k].full; if (f && !now.some(x => x.nodeId === f.id)) add.push({ nodeId: f.id, name: nm }); }
+  const keep = now.filter(f => !add.some(a => a.name === f.name));
+  p02.flowStartingPoints = keep.concat(add); report.info.flows = p02.flowStartingPoints.length;
+});
+await step('verify', async () => {
+  let total = 0, broken = 0;
+  for (const n of p02.findAll(x => 'reactions' in x && x.reactions && x.reactions.length)) for (const r of n.reactions) for (const a of (r.actions || [])) if (a && a.type === 'NODE' && a.destinationId) { total++; const d = await figma.getNodeByIdAsync(a.destinationId); if (!d) broken++; }
+  report.info.verify = `links ${total} broken ${broken}`;
+});
+report.info.linkCount = report.info.links.length;
 return report;
