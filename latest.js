@@ -1,73 +1,73 @@
-// step 366 · inspect (salt okunur): Club card gövdesi (Management, Location, Facilities, Events), Women's notu, Shortlists filtre satırı, Notifications başlığı, yetim "2 unread" metinleri
+// step 367 · Notifications: "2 unread" başlık satırının sağına, "Mark all as read" düğmesinin soluna (masaüstü) / başlıkla aynı satırda sağ uca (mobil) + sayfa kökündeki 4 yetim "2 unread" metni 03 · Archive'a
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
-const p01 = figma.root.children.find(p => /^01/.test(p.name)); await p01.loadAsync();
 const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
+const p03 = figma.root.children.find(p => /^03/.test(p.name)); await p03.loadAsync();
 const R = n => Math.round(n);
 const BB = n => n.absoluteBoundingBox;
+const allVars = await figma.variables.getLocalVariablesAsync();
+const tryV = (...names) => { for (const nm of names) { const v = allVars.find(x => x.name === nm); if (v) return v; } return null; };
 const secOf = (plat, name) => { const root = p02.children.find(n => n.type === 'SECTION' && n.name === plat); return root ? root.children.find(n => n.type === 'SECTION' && n.name === name) : null; };
-const SKIP = /^(Ticker|Navigation|Footer)/;
-function dump(n, base, max, depth, out) {
-  const b = BB(n); const pad = '  '.repeat(depth);
-  let s = pad + n.name + ' [' + n.type + (n.layoutMode && n.layoutMode !== 'NONE' ? ' ' + n.layoutMode : '') + (n.layoutWrap === 'WRAP' ? ' WRAP' : '') + '] ' + R(n.width) + 'x' + R(n.height);
-  if (b && base) s += ' @' + R(b.x - base.x) + ',' + R(b.y - base.y);
-  if (n.layoutSizingHorizontal) s += ' h:' + n.layoutSizingHorizontal;
-  if (n.layoutSizingVertical) s += ' v:' + n.layoutSizingVertical;
-  if (n.layoutPositioning === 'ABSOLUTE') s += ' ABS';
-  if (n.visible === false) s += ' hidden';
-  if (n.type === 'TEXT') s += ' "' + String(n.characters).slice(0, 50) + '"';
-  out.push(s);
-  if (depth < max && 'children' in n && n.type !== 'INSTANCE' && !SKIP.test(n.name)) for (const c of n.children) dump(c, base, max, depth + 1, out);
-  return out;
-}
-const frameByName = (sec, name) => sec ? sec.children.find(c => c.type === 'FRAME' && c.name === name) : null;
 
-await step('Club card ekranlari', async () => {
-  const cases = [
-    ['Web', 'Clubs / Club card · Desktop', 5],
-    ['Web', "Clubs / Club card / Women's club · Desktop", 3],
-    ['Mobile', 'Clubs / Club card · Mobile', 4]
-  ];
-  for (const [plat, nm, max] of cases) {
-    const sec = secOf(plat, 'Club card'); const f = frameByName(sec, nm);
-    if (!f) { report.errors.push('ekran yok: ' + plat + ' ' + nm + ' | var olanlar: ' + (sec ? sec.children.map(c => c.name).join(' ; ') : 'Section yok')); continue; }
-    report.info[plat + ' · ' + nm] = dump(f, BB(f), max, 0, []);
-  }
-});
-
-await step('Notifications baslik', async () => {
+await step('Unread count tasima', async () => {
+  const rows = [];
+  const gapVar = tryV('spacing/md', 'Spacing/md', 'dimension/spacing/md');
+  report.info.gapVariable = gapVar ? gapVar.name : 'bulunamadi, itemSpacing 16 bagsiz';
   for (const plat of ['Web', 'Mobile']) {
     const sec = secOf(plat, 'Notifications'); if (!sec) throw new Error('Section yok: ' + plat);
-    const frames = sec.children.filter(c => c.type === 'FRAME');
-    const f = frames[0];
-    const t = f.findOne(n => n.name === 'Title group');
-    const out = [];
-    if (t) { dump(t.parent, BB(f), 1, 0, out); out.push('--- Title group:'); dump(t, BB(f), 3, 0, out); } else out.push('Title group yok');
-    report.info['Notifications ' + plat] = { frames: frames.map(c => c.name + ' ' + R(c.width) + 'x' + R(c.height)), titleArea: out };
+    for (const f of sec.children.filter(c => c.type === 'FRAME')) {
+      const nm = plat + ' · ' + f.name.replace(/^.*\/ /, '');
+      const un = f.findOne(n => n.type === 'TEXT' && n.name === 'Unread count');
+      if (!un) { rows.push(nm + ': Unread count yok (beklenen, atlandi)'); continue; }
+      const tg = un.parent; const heading = tg.parent;
+      const btn = heading.children.find(c => /Mark all as read/.test(c.name));
+      if (!btn) throw new Error('Mark all as read yok: ' + nm);
+      const h0 = R(f.height); const fb = BB(f);
+      const reactionsBefore = btn.reactions ? btn.reactions.length : 0;
+      if (heading.layoutMode === 'HORIZONTAL') {
+        let actions = heading.children.find(c => c.name === 'Heading actions');
+        if (!actions) {
+          actions = figma.createFrame(); actions.name = 'Heading actions';
+          actions.layoutMode = 'HORIZONTAL'; actions.primaryAxisSizingMode = 'AUTO'; actions.counterAxisSizingMode = 'AUTO';
+          actions.counterAxisAlignItems = 'CENTER'; actions.fills = [];
+          if (gapVar) actions.setBoundVariable('itemSpacing', gapVar); else actions.itemSpacing = 16;
+          const idx = heading.children.indexOf(btn);
+          heading.insertChild(idx, actions);
+          actions.appendChild(un);
+          actions.appendChild(btn);
+        }
+        heading.primaryAxisAlignItems = 'SPACE_BETWEEN';
+        heading.counterAxisAlignItems = 'CENTER';
+        un.layoutSizingHorizontal = 'HUG';
+      } else {
+        tg.layoutSizingHorizontal = 'FILL';
+        tg.primaryAxisAlignItems = 'SPACE_BETWEEN';
+        tg.counterAxisAlignItems = 'CENTER';
+        un.layoutSizingHorizontal = 'HUG';
+      }
+      const ub = BB(un), bb = BB(btn), hb = BB(heading), tb = BB(tg.children.find(c => c.name === 'Title') || tg);
+      rows.push(nm + ': unread @' + R(ub.x - fb.x) + ',' + R(ub.y - fb.y) + ' sag ' + R(ub.x + ub.width - fb.x) +
+        ' | dugme sol ' + R(bb.x - fb.x) + ' | satir sag ' + R(hb.x + hb.width - fb.x) +
+        ' | unread dugmeye binmiyor: ' + (heading.layoutMode === 'HORIZONTAL' ? (ub.x + ub.width <= bb.x - 8) : (ub.y + ub.height <= bb.y)) +
+        ' | unread basligin sagi: ' + (ub.x >= tb.x + tb.width) + ' | icinde: ' + (ub.x + ub.width <= hb.x + hb.width + 0.5) +
+        ' | frame ' + h0 + ' -> ' + R(f.height) + ' | dugme reactions ' + reactionsBefore + ' -> ' + (btn.reactions ? btn.reactions.length : 0) +
+        ' | stil: ' + (un.textStyleId ? 'var' : 'YOK'));
+    }
   }
+  report.info.unread = rows;
 });
 
-await step('yetim 2 unread', async () => {
-  const kids = p02.children.filter(n => n.type !== 'SECTION');
-  report.info.pageRootNonSection = kids.map(n => n.type + ' ' + n.name + (n.type === 'TEXT' ? ' "' + String(n.characters).slice(0, 30) + '"' : '') + ' ' + R(n.width) + 'x' + R(n.height) + ' @' + R(n.x) + ',' + R(n.y) + (n.visible === false ? ' hidden' : ''));
+await step('yetim 2 unread -> Archive', async () => {
+  const orphans = p02.children.filter(n => n.type === 'TEXT' && /unread/.test(n.characters));
+  let right = 0; for (const k of p03.children) right = Math.max(right, k.x + k.width);
+  let x = right + 400; const moved = [];
+  for (const o of orphans) { o.x = x; o.y = 0; p03.appendChild(o); x += 80; moved.push(o.name + ' -> Archive'); }
+  report.info.orphans = { moved: moved.length, rest: p02.children.filter(n => n.type !== 'SECTION').length };
 });
 
-await step('Shortlists filtre satiri', async () => {
-  for (const plat of ['Web', 'Mobile']) {
-    const sec = secOf(plat, 'Shortlists'); if (!sec) throw new Error('Section yok: ' + plat);
-    const frames = sec.children.filter(c => c.type === 'FRAME');
-    const f = frames.find(c => !/No players|Position list open/.test(c.name)) || frames[0];
-    const pf = f.findOne(n => n.name === 'Position filters');
-    const out = [];
-    if (pf) { dump(pf.parent, BB(f), 2, 0, out); out.push('--- Position filters:'); dump(pf, BB(f), 3, 0, out); } else out.push('Position filters yok');
-    report.info['Shortlists ' + plat] = { frames: frames.map(c => c.name + ' ' + R(c.width) + 'x' + R(c.height)), filterArea: out };
-  }
+await step('stilsiz metin / bagsiz boya kontrolu', async () => {
+  const bad = [];
+  for (const plat of ['Web', 'Mobile']) { const sec = secOf(plat, 'Notifications'); for (const t of sec.findAll(n => n.type === 'TEXT' && n.name === 'Unread count')) { if (!t.textStyleId) bad.push('stilsiz'); const fl = t.fills && t.fills[0]; if (!fl || !fl.boundVariables || !fl.boundVariables.color) bad.push('boya bagsiz'); } }
+  report.info.unreadChecks = bad.length ? bad : 'temiz';
 });
-
-await step('component listesi', async () => {
-  const re = /^(Person row|Event row|Filter chip|Form field|Position menu|Option list|Option row|Button|Icon button|Chip|Team select|Event location card|Section heading|Page notice|Facility|Badge|Tag)/;
-  const comps = p01.findAll(n => (n.type === 'COMPONENT_SET' || n.type === 'COMPONENT') && re.test(n.name));
-  report.info.components = comps.map(c => c.type.slice(0, 4) + ' ' + c.name + ' ' + R(c.width) + 'x' + R(c.height) + (c.type === 'COMPONENT_SET' ? ' variants:' + c.children.length : ''));
-});
-
 return report;
