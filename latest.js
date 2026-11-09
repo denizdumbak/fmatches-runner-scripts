@@ -1,59 +1,50 @@
-// step 344 · Kulüp kartı düzeltmeleri (Deniz, Chrome'da bakıldı): masaüstü arma kutusu kalkar, Management 2x2 + Events/Facilities alt satırda yan yana (ortadaki boşluk), mobil League tam satır (Teams'e yapışmasın)
-const report = { done: [], errors: [], info: { dimsMissing: [] } };
+// step 345 · Kulüp kartı: masaüstü Location kartının alt kenarı Management ile hizalı; mobil hero'da arma + ad yan yana, gri kutu ve büyük arma kalkar
+const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
+const p01 = figma.root.children.find(p => /^01/.test(p.name)); await p01.loadAsync();
 await figma.setCurrentPageAsync(p02);
 const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web');
 const mob = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
-const allVars = await figma.variables.getLocalVariablesAsync();
-const D = key => { const v = allVars.find(x => x.name === key) || allVars.find(x => x.name.endsWith('/' + key)); if (!v) report.info.dimsMissing.push(key); return v || null; };
 const sz = n => Math.round(n.width) + 'x' + Math.round(n.height);
 const sec = plat => { const s = plat.children.find(n => n.type === 'SECTION' && n.name === 'Club card'); if (!s) throw new Error('Club card Section yok'); return s; };
 const frame = (s, re) => { const f = s.children.find(n => n.type === 'FRAME' && re.test(n.name)); if (!f) throw new Error('frame yok ' + re); return f; };
 const sWeb = sec(web), sMob = sec(mob);
 const fd = frame(sWeb, /Club card · Desktop$/), fm = frame(sMob, /Club card · Mobile$/);
+const bottom = n => { const a = n.absoluteBoundingBox; return Math.round(a.y + a.height); };
 
-await step('Masaüstü: arma kutusu kalkar', async () => {
-  const tile = fd.findOne(n => n.name === 'Crest tile'); if (!tile) throw new Error('Crest tile yok');
-  tile.visible = false; report.info.tile = 'gizlendi (' + sz(tile) + ')';
+await step('Masaüstü: Location alt kenarı Management ile hizalı', async () => {
+  const body = fd.findOne(n => n.name === 'Profile body'); const cols = body.findOne(n => n.name === 'Profile columns');
+  const side = cols.findOne(n => n.name === 'Side column'), main = cols.findOne(n => n.name === 'Main column'); const loc = side.children.find(n => /^Location/.test(n.name)); const mg = main.findOne(n => n.name === 'Management');
+  if (!loc || !mg) throw new Error('loc/mg yok');
+  report.info.before = { management: bottom(mg), location: bottom(loc), locSize: sz(loc) };
+  side.layoutAlign = 'STRETCH'; loc.layoutGrow = 1;
+  const map = loc.findOne(n => n.name === 'Map'); const img = loc.findOne(n => n.name === 'Map image'); const mk = loc.findOne(n => n.name === 'Map marker');
+  if (map) { try { map.layoutGrow = 1; } catch (e) { report.errors.push('map grow: ' + e.message); } }
+  if (map && img) { try { img.resize(map.width, map.height); } catch (e) { report.errors.push('img resize: ' + e.message); } }
+  if (map && mk) { try { mk.x = (map.width - mk.width) / 2; mk.y = (map.height - mk.height) / 2; } catch (e) { report.errors.push('marker: ' + e.message); } }
+  report.info.after = { management: bottom(mg), location: bottom(loc), locSize: sz(loc), map: map ? sz(map) : '-', mapImage: img ? sz(img) : '-', side: sz(side) };
 });
 
-await step('Masaüstü: Management 2x2', async () => {
-  const mg = fd.findOne(n => n.name === 'Management'); const rows = mg.children.filter(n => /^Person row/.test(n.name)); if (rows.length !== 4) throw new Error('person row sayısı ' + rows.length);
-  for (const old of mg.children.filter(n => n.name === 'Management grid')) old.remove();
-  const grid = figma.createFrame(); grid.name = 'Management grid'; grid.layoutMode = 'HORIZONTAL'; grid.fills = []; grid.clipsContent = false; grid.layoutWrap = 'WRAP'; grid.primaryAxisSizingMode = 'FIXED'; grid.counterAxisSizingMode = 'AUTO';
-  mg.appendChild(grid); grid.layoutSizingHorizontal = 'FILL';
-  const g = D('spacing/md'); if (g) { grid.setBoundVariable('itemSpacing', g); grid.setBoundVariable('counterAxisSpacing', g); }
-  const w = Math.floor((mg.width - 64 - 16) / 2);
-  for (const r of rows) { grid.appendChild(r); r.layoutSizingHorizontal = 'FIXED'; r.resize(w, r.height); }
-  report.info.mgmt = sz(mg) + ' grid ' + sz(grid) + ' rowW ' + w;
+await step('Mobil: arma + ad yan yana, gri kutu kalkar', async () => {
+  const hero = fm.findOne(n => n.name === 'Hero · stadium identity'); if (!hero) throw new Error('hero yok');
+  const tile = hero.findOne(n => n.name === 'Crest tile'); if (tile) tile.visible = false;
+  for (const big of hero.findAll(n => n.name === 'Club crest · large')) big.remove();
+  if (hero.findOne(n => n.name === 'Club header')) { report.info.mobileHeader = 'zaten var'; return; }
+  const nameFrame = hero.findOne(n => n.name === 'Player name'); if (!nameFrame) throw new Error('Player name yok');
+  const par = nameFrame.parent; const idx = par.children.indexOf(nameFrame);
+  const crestSet = p01.findAll(n => n.type === 'COMPONENT_SET' && n.name === 'Club crest')[0]; if (!crestSet) throw new Error('Club crest seti yok');
+  const header = figma.createFrame(); header.name = 'Club header'; header.layoutMode = 'HORIZONTAL'; header.fills = []; header.clipsContent = false; header.counterAxisAlignItems = 'CENTER'; header.primaryAxisSizingMode = 'FIXED'; header.counterAxisSizingMode = 'AUTO';
+  const gv = (await figma.variables.getLocalVariablesAsync()).find(v => v.name === 'spacing/md' || v.name.endsWith('/spacing/md')); if (gv) header.setBoundVariable('itemSpacing', gv);
+  par.insertChild(idx, header); header.layoutSizingHorizontal = 'FILL';
+  const crest = crestSet.children.find(c => /Riverside FC/.test(c.name)).createInstance(); crest.name = 'Club crest'; header.appendChild(crest); crest.rescale(1.7);
+  header.appendChild(nameFrame); nameFrame.layoutSizingHorizontal = 'FILL';
+  report.info.mobileHeader = sz(header) + ' crest ' + sz(crest) + ' name ' + sz(nameFrame);
 });
 
-await step('Masaüstü: Events + Facilities alt satır', async () => {
-  const body = fd.findOne(n => n.name === 'Profile body'); const ev = body.findOne(n => n.name === "Events on club's facilities"); const fac = body.findOne(n => n.name === 'Facilities');
-  if (!ev || !fac) throw new Error('events/facilities yok');
-  for (const old of body.children.filter(n => n.name === 'Profile columns 2')) old.remove();
-  const row = figma.createFrame(); row.name = 'Profile columns 2'; row.layoutMode = 'HORIZONTAL'; row.fills = []; row.clipsContent = false; row.primaryAxisSizingMode = 'FIXED'; row.counterAxisSizingMode = 'AUTO';
-  const g = D('spacing/lg'); if (g) row.setBoundVariable('itemSpacing', g);
-  body.appendChild(row); row.layoutSizingHorizontal = 'FILL';
-  row.appendChild(ev); ev.layoutSizingHorizontal = 'FILL'; ev.layoutAlign = 'STRETCH';
-  row.appendChild(fac); fac.layoutSizingHorizontal = 'FIXED'; fac.resize(416, fac.height); fac.layoutAlign = 'STRETCH';
-});
-
-await step('Mobil: League tam satır', async () => {
-  const hero = fm.findOne(n => n.name === 'Hero · stadium identity'); const lg = hero.findOne(n => n.name === 'Fact · League'); if (!lg) throw new Error('Fact · League yok');
-  lg.layoutSizingHorizontal = 'FILL';
-  const kf = lg.parent; report.info.keyFacts = kf.name + ' wrap=' + kf.layoutWrap + ' ' + sz(kf);
-});
-
-await step('Boyutlar ve kontrol', async () => {
+await step('Boyutlar', async () => {
   sWeb.resizeWithoutConstraints(1600, Math.ceil(100 + fd.height + 80)); sMob.resizeWithoutConstraints(560, Math.ceil(100 + fm.height + 80));
-  const b = fd.findOne(n => n.name === 'Profile body');
-  report.info.desktop = sz(fd) + ' | body: ' + b.children.map(c => c.name + ' ' + sz(c)).join(' | ');
-  const cols = b.findOne(n => n.name === 'Profile columns'); report.info.row1 = cols.children.map(c => c.name + ' ' + sz(c) + ' [' + c.children.map(x => x.name + ' ' + Math.round(x.height)).join(', ') + ']');
-  const r2 = b.findOne(n => n.name === 'Profile columns 2'); report.info.row2 = r2 ? r2.children.map(c => c.name + ' ' + sz(c)) : 'yok';
-  const hero = fm.findOne(n => n.name === 'Hero · stadium identity'); const f = hero.findAll(n => /^Fact · /.test(n.name));
-  const pb = hero.absoluteBoundingBox; report.info.mobileFacts = f.map(x => { const a = x.absoluteBoundingBox; return x.name + ' x=' + Math.round(a.x - pb.x) + ' y=' + Math.round(a.y - pb.y) + ' ' + sz(x); });
-  report.info.mobile = sz(fm);
+  report.info.sizes = 'desktop ' + sz(fd) + ' mobile ' + sz(fm);
+  const hero = fm.findOne(n => n.name === 'Hero · stadium identity'); report.info.mobileHero = sz(hero) + ' | ' + hero.children.map(c => c.name + ' ' + sz(c)).join(' | ');
 });
 return report;
