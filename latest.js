@@ -1,122 +1,139 @@
-// step 377 · Club card MOBİL: Women's notu silinir · Women's 8 yönetici (kapalı 4 + "Show all 8", yeni ekran açık) · "Events on club's facilities" kalkar, etkinlikler tesis satırlarında açılır (sayı satır içinde) · sıra Management, Teams, Location, Facilities
+// step 378 · Shortlists: "Filters applied" ekranları (masaüstü + mobil; düğme "Filters · N", seçili çipler + Clear all, liste süzülmüş) + prototip + eski "Position list open" ekranları 03 · Archive'a + Section yeniden dizilir
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const p01 = figma.root.children.find(p => /^01/.test(p.name)); await p01.loadAsync();
 const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
+const p03 = figma.root.children.find(p => /^03/.test(p.name)); await p03.loadAsync();
 await figma.setCurrentPageAsync(p02);
 const R = n => Math.round(n);
 const BB = n => n.absoluteBoundingBox;
 const allVars = await figma.variables.getLocalVariablesAsync();
 const tryV = (...names) => { for (const n of names) { const v = allVars.find(x => x.name === n || x.name.endsWith('/' + n)); if (v) return v; } return null; };
-const V = name => { const v = tryV(name); if (!v) throw new Error('variable missing: ' + name); return v; };
-const P = v => figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: .5, g: .5, b: .5 } }, 'color', v);
-function mkIcon(svg, colorVar, size) {
-  const ic = figma.createNodeFromSvg(svg); ic.name = 'Icon'; ic.fills = []; ic.resize(size, size); ic.constraints = { horizontal: 'SCALE', vertical: 'SCALE' };
-  const walk = x => { if ('children' in x) x.children.forEach(walk); if (x.type !== 'FRAME' && x.type !== 'GROUP') { if (x.strokes && x.strokes.length) x.strokes = [P(V(colorVar))]; x.constraints = { horizontal: 'SCALE', vertical: 'SCALE' }; } };
-  walk(ic); return ic;
-}
-const SV = body => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
-const CHEV_DOWN = SV('<path d="m6 9 6 6 6-6"/>'), CHEV_UP = SV('<path d="m18 15-6-6-6 6"/>');
 const nav = dest => ({ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'NODE', destinationId: dest.id, navigation: 'NAVIGATE', transition: { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.3 }, preserveScrollPosition: false, resetVideoPosition: false }] });
 const isNavAct = a => a && a.type === 'NODE' && a.navigation !== 'CHANGE_TO';
-const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
-const sec = web.children.find(n => n.type === 'SECTION' && n.name === 'Club card');
-const frameOf = nm => sec.children.find(c => c.type === 'FRAME' && c.name === nm);
-const NAMES = { full: 'Clubs / Club card · Mobile', women: `Clubs / Club card / Women's club · Mobile`, staff: 'Clubs / Club card / Staff tab · Mobile', team: 'Clubs / Club card / Team list open · Mobile', womenOpen: `Clubs / Club card / Women's club / Management expanded · Mobile` };
+const DEV = { Web: 'Desktop', Mobile: 'Mobile' };
+const secOf = plat => p02.children.find(n => n.type === 'SECTION' && n.name === plat).children.find(n => n.type === 'SECTION' && n.name === 'Shortlists');
+const defName = d => 'Shortlists / Shortlists · ' + d, openName = d => 'Shortlists / Filters open · ' + d, appName = d => 'Shortlists / Filters applied · ' + d, oldName = d => 'Shortlists / Position list open · ' + d, noName = d => 'Shortlists / No players · ' + d;
+const frameOf = (sec, nm) => sec.children.find(c => c.type === 'FRAME' && c.name === nm);
 const btnSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Button');
 const subtle = () => { const v = btnSet.children.find(c => c.name.indexOf('Style=Subtle') >= 0 && c.name.indexOf('State=Default') >= 0); if (!v) throw new Error('Subtle Button yok'); return v; };
+const chipSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Filter chip');
 async function setLabel(btn, str) {
   const key = Object.keys(btn.componentProperties).find(k => /^Label/.test(k)); if (key) btn.setProperties({ [key]: str });
   const t = btn.findOne(n => n.type === 'TEXT'); if (t) { await figma.loadFontAsync(t.fontName); if (t.characters !== str) t.characters = str; }
 }
-async function setTxt(t, str) { await figma.loadFontAsync(t.fontName); t.characters = str; }
-const bodyOf = f => f.findOne(n => n.type === 'FRAME' && n.name === 'Profile body');
-
-
-async function restructure(f) {
-  const log = []; const body = bodyOf(f); if (!body) throw new Error('Profile body yok: ' + f.name);
-  const note = body.children.find(c => /^Note · Women/.test(c.name)); if (note) { note.remove(); log.push('Women notu silindi'); }
-  const evFrame = body.children.find(c => /^Events on club/.test(c.name)); const fac = body.children.find(c => c.name === 'Facilities');
-  if (!fac) throw new Error('Facilities yok: ' + f.name);
-  if (evFrame) {
-    const evRows = evFrame.findAll(n => n.type === 'INSTANCE' && /^Event row/.test(n.name));
-    const rowsOf = fr => /Academy/.test(fr.name) ? evRows.filter(r => /Youth/.test(r.name)) : (/Training/.test(fr.name) ? [] : evRows.filter(r => !/Youth/.test(r.name)));
-    const facRows = fac.children.filter(c => c.type === 'FRAME' && /^Facility ·/.test(c.name));
-    let moved = 0;
-    for (const fr of facRows) {
-      const evs = rowsOf(fr); const idx = fac.children.indexOf(fr);
-      const group = figma.createFrame(); group.name = 'Facility group · ' + fr.name.replace('Facility · ', ''); group.fills = []; group.layoutMode = 'VERTICAL'; group.itemSpacing = 0; group.primaryAxisSizingMode = 'AUTO'; group.counterAxisSizingMode = 'FIXED';
-      fac.insertChild(idx, group); group.layoutSizingHorizontal = 'FILL';
-      group.appendChild(fr); fr.layoutSizingHorizontal = 'FILL';
-      const textFrame = fr.findOne(n => n.type === 'FRAME' && n.name === 'Text'); const metas = textFrame.children.filter(c => c.type === 'TEXT'); const meta = metas[metas.length - 1];
-      const chev = fr.children.find(c => c.name === 'Icon · chevron');
-      const old = chev.findOne(n => n.type === 'VECTOR'); let colorName = 'color/icon/default';
-      const sb = old && old.strokes && old.strokes[0] && old.strokes[0].boundVariables && old.strokes[0].boundVariables.color; if (sb) { const vv = await figma.variables.getVariableByIdAsync(sb.id); if (vv) colorName = vv.name; }
-      const cnt = meta.clone(); cnt.name = 'Events count'; textFrame.appendChild(cnt); await setTxt(cnt, evs.length ? evs.length + ' upcoming' : 'No upcoming events');
-      const expanded = evs.length && !/Academy/.test(fr.name);
-      if (evs.length) {
-        for (const k of chev.children.slice()) k.remove(); const g = mkIcon(expanded ? CHEV_UP : CHEV_DOWN, colorName, 20); chev.appendChild(g); g.x = 0; g.y = 0;
-        const box = figma.createFrame(); box.name = 'Facility events'; box.fills = []; box.layoutMode = 'VERTICAL'; box.itemSpacing = 0; box.primaryAxisSizingMode = 'AUTO'; box.counterAxisSizingMode = 'FIXED'; box.paddingBottom = 12;
-        group.appendChild(box); box.layoutSizingHorizontal = 'FILL';
-        for (const r of evs) { box.appendChild(r); r.layoutSizingHorizontal = 'FILL'; moved++; }
-        const vb = subtle().createInstance(); vb.name = 'Button · View facility'; box.appendChild(vb); await setLabel(vb, 'View facility'); vb.layoutSizingHorizontal = 'HUG';
-        if (!expanded) box.visible = false;
-      } else { chev.visible = false; }
-    }
-    evFrame.remove(); log.push('Events bolumu kalkti, ' + moved + ' etkinlik tesis satirlarina tasindi');
-  }
-  return log;
+const rowsOf = f => f.findAll(n => n.type === 'INSTANCE' && /^Player ·/.test(n.name));
+function parse(row) {
+  const out = {};
+  for (const fct of row.findAll(n => n.name === 'Fact')) { const l = fct.findOne(n => n.type === 'TEXT' && n.name === 'Label'), v = fct.findOne(n => n.type === 'TEXT' && n.name === 'Value'); if (l && v) out[l.characters] = v.characters; }
+  const age = parseInt(out['Age'], 10); const m = /(\d{4})/.exec(out['Contract until'] || ''); return { name: row.name.replace('Player · ', ''), age: isNaN(age) ? null : age, year: m ? parseInt(m[1], 10) : null, raw: out };
 }
 
-for (const key of ['full', 'women', 'staff', 'team']) {
-  await step('restructure ' + key, async () => { const f = frameOf(NAMES[key]); if (!f) throw new Error('ekran yok: ' + NAMES[key]); report.info['restructure ' + key] = await restructure(f); });
-}
-
-await step("Women's 8 yonetici + acik ekran", async () => {
-  const f = frameOf(NAMES.women); if (!f) throw new Error('Women ekran yok');
-  for (const o of sec.children.filter(c => c.type === 'FRAME' && c.name === NAMES.womenOpen)) o.remove();
-  const mgmt = f.findOne(n => n.type === 'FRAME' && n.name === 'Management');
-  let rows = mgmt.children.filter(c => /^Person row/.test(c.name));
-  if (rows.length === 4) {
-    const defs = [['Sabine Krüger', `Head of Women's Football`, 'Female'], ['Thomas Wolff', 'Managing Director', 'Male'], ['Nina Albrecht', 'Director of Finance', 'Female'], ['Markus Engel', 'Head of Marketing', 'Male']];
-    for (let i = 0; i < 4; i++) {
-      const c = rows[i].clone(); mgmt.appendChild(c); c.name = 'Person row · ' + defs[i][0];
-      await setTxt(c.findOne(n => n.type === 'TEXT' && n.name === 'Name'), defs[i][0]); await setTxt(c.findOne(n => n.type === 'TEXT' && n.name === 'Meta'), defs[i][1]);
-      const sil = c.findOne(n => n.type === 'INSTANCE' && n.componentProperties && 'Gender' in n.componentProperties); if (!sil) throw new Error('silüet yok: ' + c.name); sil.setProperties({ Gender: defs[i][2] });
-      c.layoutSizingHorizontal = 'FILL';
+// 1) Filters applied ekranları
+await step('Filters applied ekranlari', async () => {
+  const res = [];
+  // kriter secimi masaustu satirlarindan
+  const base0 = frameOf(secOf('Web'), defName('Desktop')); const data = rowsOf(base0).map(parse);
+  report.info.rowData = data.map(d => d.name + ' | yas ' + d.age + ' | sozlesme ' + d.year);
+  const cands = [
+    { chips: ['Contract until 2027', 'Age up to 25'], test: d => d.year != null && d.year <= 2027 && d.age != null && d.age <= 25 },
+    { chips: ['Contract until 2027'], test: d => d.year != null && d.year <= 2027 },
+    { chips: ['Age up to 25'], test: d => d.age != null && d.age <= 25 },
+    { chips: ['Contract until 2026'], test: d => d.year != null && d.year <= 2026 }
+  ];
+  const crit = cands.find(c => { const k = data.filter(c.test).length; return k >= 1 && k <= data.length - 1; });
+  if (!crit) throw new Error('uygun kriter yok: ' + JSON.stringify(report.info.rowData));
+  report.info.criteria = crit.chips.join(' + ') + ' -> ' + data.filter(crit.test).map(d => d.name).join(', ');
+  const selVar = chipSet.children.find(v => /State=Selected/.test(v.name)); if (!selVar) throw new Error('Filter chip Selected yok');
+  const gv = tryV('spacing/sm', 'spacing/md');
+  for (const plat of ['Web', 'Mobile']) {
+    const d = DEV[plat]; const sec = secOf(plat); const base = frameOf(sec, defName(d)); if (!base) throw new Error('ekran yok: ' + plat);
+    for (const o of p02.findAll(n => n.type === 'FRAME' && n.name === appName(d))) o.remove();
+    const siblings = sec.children.filter(c => c.type === 'FRAME' && c.name !== appName(d)); const xs = siblings.map(f => f.x).sort((a, b) => a - b); const stepX = xs[1] - xs[0];
+    const clone = base.clone(); clone.name = appName(d); sec.appendChild(clone); clone.x = xs[0] + stepX * siblings.length; clone.y = base.y;
+    const col = clone.findOne(n => n.name === 'Column'); const bar = clone.findOne(n => n.name === 'Filter bar'); const fb = bar.findOne(n => n.name === 'Button · Filters');
+    await setLabel(fb, 'Filters · ' + crit.chips.length);
+    // secili cipler + Clear all
+    const wrap = figma.createFrame(); wrap.name = 'Applied filters'; wrap.fills = []; wrap.layoutMode = 'HORIZONTAL'; wrap.layoutWrap = 'WRAP'; wrap.primaryAxisSizingMode = 'FIXED'; wrap.counterAxisSizingMode = 'AUTO'; wrap.counterAxisAlignItems = 'CENTER';
+    if (gv) { wrap.setBoundVariable('itemSpacing', gv); wrap.setBoundVariable('counterAxisSpacing', gv); } else { wrap.itemSpacing = 12; wrap.counterAxisSpacing = 12; }
+    col.insertChild(col.children.indexOf(bar) + 1, wrap); wrap.layoutSizingHorizontal = 'FILL';
+    for (const label of crit.chips) {
+      const chip = selVar.createInstance(); chip.name = 'Filter chip · ' + label; wrap.appendChild(chip);
+      const t = chip.findOne(n => n.type === 'TEXT'); await figma.loadFontAsync(t.fontName); t.characters = label + '  ×'; chip.layoutSizingHorizontal = 'HUG';
     }
-    rows = mgmt.children.filter(c => /^Person row/.test(c.name));
+    const clear = subtle().createInstance(); clear.name = 'Button · Clear all'; wrap.appendChild(clear); await setLabel(clear, 'Clear all'); clear.layoutSizingHorizontal = 'HUG';
+    // liste suzme
+    const list = clone.findOne(n => n.name === 'List card'); const rows = rowsOf(list); const parents = new Set(rows.map(r => r.parent)); let removed = 0;
+    for (const r of rows) { if (crit.test(parse(r))) continue; const par = r.parent; const i = par.children.indexOf(r); const next = par.children[i + 1], prev = par.children[i - 1]; if (next && /Divider/.test(next.name)) next.remove(); else if (prev && /Divider/.test(prev.name)) prev.remove(); r.remove(); removed++; }
+    for (const par of parents) { const last = par.children[par.children.length - 1]; if (last && /Divider/.test(last.name)) last.remove(); }
+    const kept = rowsOf(list).map(r => r.name.replace('Player · ', ''));
+    const need = clone.x + clone.width + 80; if (need > sec.width) sec.resizeWithoutConstraints(R(need), R(sec.height));
+    res.push(plat + ': ' + clone.name + ' ' + R(clone.width) + 'x' + R(clone.height) + ' | silinen ' + removed + ' | kalan ' + kept.join(', ') + ' | dugme "' + (fb.findOne(n => n.type === 'TEXT') || {}).characters + '" | ciplerin ust satiri ' + wrap.children.map(c => c.name).join(' > ') + ' | wrap ' + R(wrap.width) + 'x' + R(wrap.height));
   }
-  const sum = mgmt.findOne(n => n.type === 'TEXT' && n.name === 'Career summary'); await setTxt(sum, rows.length + ' people');
-  let tg = mgmt.findOne(n => n.name === 'Button · Show all');
-  if (!tg) { tg = subtle().createInstance(); tg.name = 'Button · Show all'; mgmt.appendChild(tg); tg.layoutSizingHorizontal = 'FILL'; }
-  await setLabel(tg, 'Show fewer');
-  const open = f.clone(); open.name = NAMES.womenOpen; sec.appendChild(open);
-  const xs = sec.children.filter(c => c.type === 'FRAME' && c !== open).map(c => c.x).sort((a, b) => a - b); open.x = xs[xs.length - 1] + 470; open.y = f.y;
-  for (const r of rows.slice(4)) r.remove();
-  await setLabel(tg, 'Show all ' + rows.length);
-  const need = open.x + open.width + 80; if (need > sec.width) sec.resizeWithoutConstraints(R(need), R(sec.height));
-  report.info.women = { people: rows.length, collapsedRows: mgmt.children.filter(c => /^Person row/.test(c.name)).length, expandedRows: open.findOne(n => n.name === 'Management').children.filter(c => /^Person row/.test(c.name)).length, openFrame: open.name + ' ' + R(open.width) + 'x' + R(open.height) + ' @' + R(open.x) + ',' + R(open.y) };
+  report.info.applied = res;
 });
 
-await step('prototip (Show all / Show fewer)', async () => {
-  const a = frameOf(NAMES.women), b = frameOf(NAMES.womenOpen); if (!a || !b) throw new Error('ekran yok');
-  for (const [from, to] of [[a, b], [b, a]]) { const btn = from.findOne(n => n.name === 'Button · Show all'); await btn.setReactionsAsync((btn.reactions || []).filter(r => !(r.actions || []).some(isNavAct)).concat([nav(to)])); }
-  const before = p02.flowStartingPoints.length; p02.flowStartingPoints = p02.flowStartingPoints.filter(fp => fp.nodeId !== b.id);
-  report.info.flowStarts = before + ' -> ' + p02.flowStartingPoints.length;
+// 2) prototip
+await step('prototip', async () => {
+  const links = [];
+  const add = async (node, dest) => { await node.setReactionsAsync((node.reactions || []).filter(r => !(r.actions || []).some(isNavAct)).concat([nav(dest)])); };
+  for (const plat of ['Web', 'Mobile']) {
+    const d = DEV[plat]; const sec = secOf(plat); const def = frameOf(sec, defName(d)), open = frameOf(sec, openName(d)), app = frameOf(sec, appName(d));
+    if (!def || !open || !app) throw new Error('ekran eksik: ' + plat);
+    await add(open.findOne(n => n.name === 'Button · Show players'), app); links.push(plat + ': Show players -> Filters applied');
+    await add(app.findOne(n => n.name === 'Button · Clear all'), def); links.push(plat + ': Clear all -> Shortlists');
+    await add(app.findOne(n => n.name === 'Button · Filters'), open); links.push(plat + ': Filters (uygulanmis) -> Filters open');
+  }
+  const ids = new Set(); for (const plat of ['Web', 'Mobile']) { const f = frameOf(secOf(plat), appName(DEV[plat])); if (f) ids.add(f.id); }
+  const before = p02.flowStartingPoints.length; p02.flowStartingPoints = p02.flowStartingPoints.filter(fp => !ids.has(fp.nodeId));
+  report.info.prototype = { links, flowStarts: before + ' -> ' + p02.flowStartingPoints.length };
 });
 
+// 3) eski Position list open ekranlari -> Archive
+await step('Position list open -> Archive', async () => {
+  let right = 0; for (const k of p03.children) right = Math.max(right, k.x + k.width);
+  let x = right + 400; const moved = [];
+  for (const plat of ['Web', 'Mobile']) {
+    const f = frameOf(secOf(plat), oldName(DEV[plat])); if (!f) { moved.push(plat + ': zaten yok'); continue; }
+    const id = f.id; f.x = x; f.y = 0; p03.appendChild(f); x += f.width + 200; moved.push(plat + ': ' + f.name + ' -> Archive');
+    p02.flowStartingPoints = p02.flowStartingPoints.filter(fp => fp.nodeId !== id);
+  }
+  report.info.archived = moved;
+});
+
+// 4) Section'lari yeniden diz (Shortlists, No players, Filters open, Filters applied)
+await step('Shortlists Section yeniden dizilis', async () => {
+  const out = [];
+  for (const plat of ['Web', 'Mobile']) {
+    const d = DEV[plat]; const sec = secOf(plat); const order = [defName(d), noName(d), openName(d), appName(d)].map(nm => frameOf(sec, nm));
+    if (order.some(f => !f)) throw new Error('ekran eksik: ' + plat);
+    const y0 = order[0].y; const x0 = order[0].x; const stepX = plat === 'Web' ? 1920 : 470;
+    order.forEach((f, i) => { f.x = x0 + i * stepX; f.y = y0; });
+    let r = 0, b = 0; for (const f of order) { r = Math.max(r, f.x + f.width); b = Math.max(b, f.y + f.height); }
+    sec.resizeWithoutConstraints(R(r + 80), R(b + 80));
+    out.push(plat + ': ' + order.map(f => f.name.replace('Shortlists / ', '') + ' @' + R(f.x) + ' ' + R(f.height)).join(' ; ') + ' | section ' + R(sec.width) + 'x' + R(sec.height));
+  }
+  report.info.layout = out;
+});
+
+// 5) kontrol
 await step('kontrol', async () => {
-  const out = {}; const frames = sec.children.filter(c => c.type === 'FRAME');
-  for (const f of frames.filter(x => !/Minimal/.test(x.name))) {
-    const body = bodyOf(f); const fac = f.findOne(n => n.name === 'Facilities' && n.type === 'FRAME'); const mg = f.findOne(n => n.type === 'FRAME' && n.name === 'Management');
-    const bad = []; for (const t of f.findAll(n => n.type === 'TEXT' && n.visible !== false)) if (!t.textStyleId) bad.push(String(t.characters).slice(0, 18));
-    const over = []; for (const c of body.children) { const b = BB(c), bb = BB(body); if (b.x + b.width > bb.x + bb.width + 0.5) over.push(c.name); }
-    const facOver = []; if (fac) for (const n of fac.findAll(x => x.visible !== false && x.type !== 'VECTOR')) { const b = BB(n), fb = BB(fac); if (b && fb && b.x + b.width > fb.x + fb.width + 0.5) facOver.push(n.name); }
-    out[f.name.replace('Clubs / Club card', '').trim() || 'Full'] = { size: R(f.width) + 'x' + R(f.height), body: body.children.map(c => c.name + ' ' + R(c.height)), people: mg.children.filter(c => /^Person row/.test(c.name)).length, eventRowsInFacilities: fac.findAll(n => n.type === 'INSTANCE' && /^Event row/.test(n.name)).length, facilityRowHeights: fac.findAll(n => n.type === 'FRAME' && /^Facility ·/.test(n.name)).map(n => R(n.height)).join(','), unstyled: bad.length ? bad : 0, bodyOverflow: over.length ? over : 'none', facilitiesOverflow: facOver.length ? facOver.slice(0, 4) : 'none', womenNoteLeft: !!f.findOne(n => /^Note · Women/.test(n.name)) };
+  const out = {};
+  for (const plat of ['Web', 'Mobile']) {
+    const sec = secOf(plat); const frames = sec.children.filter(c => c.type === 'FRAME'); const unstyled = [], gray = [];
+    for (const f of frames) {
+      for (const t of f.findAll(n => n.type === 'TEXT' && n.visible !== false)) if (!t.textStyleId) unstyled.push(f.name.replace('Shortlists / ', '') + ': "' + String(t.characters).slice(0, 18) + '"');
+      for (const n of f.findAll(x => 'fills' in x && Array.isArray(x.fills))) for (const p of n.fills) if (p.type === 'SOLID' && p.visible !== false && Math.abs(p.color.r - .5) < .003 && Math.abs(p.color.g - .5) < .003 && Math.abs(p.color.b - .5) < .003 && !(p.boundVariables && p.boundVariables.color)) gray.push(f.name + ': ' + n.name);
+    }
+    let ov = 0; for (let i = 0; i < frames.length; i++) for (let j = i + 1; j < frames.length; j++) { const A = frames[i], B = frames[j]; if (A.x < B.x + B.width && B.x < A.x + A.width && A.y < B.y + B.height && B.y < A.y + A.height) ov++; }
+    const plt = p02.children.find(n => n.type === 'SECTION' && n.name === plat); let so = 0;
+    for (const s of plt.children.filter(n => n.type === 'SECTION' && n !== sec)) if (sec.x < s.x + s.width && s.x < sec.x + sec.width && sec.y < s.y + s.height && s.y < sec.y + sec.height) so++;
+    out[plat] = { frames: frames.map(f => f.name.replace('Shortlists / ', '') + ' ' + R(f.width) + 'x' + R(f.height)), unstyledText: unstyled.length ? unstyled : 0, grayFills: gray.length ? gray : 0, frameOverlaps: ov, sectionOverlaps: so };
   }
-  let ov = 0; for (let i = 0; i < frames.length; i++) for (let j = i + 1; j < frames.length; j++) { const A = frames[i], B = frames[j]; if (A.x < B.x + B.width && B.x < A.x + A.width && A.y < B.y + B.height && B.y < A.y + A.height) ov++; }
-  out.sectionFrameOverlaps = ov; out.section = R(sec.width) + 'x' + R(sec.height) + ' insidePlatform ' + (sec.x + sec.width <= web.width);
+  // kopuk prototip baglantisi
+  let links = 0, broken = 0; const bad = [];
+  for (const n of p02.findAll(x => x.reactions && x.reactions.length)) for (const r of n.reactions) for (const a of (r.actions || [])) if (a && a.type === 'NODE' && a.navigation !== 'CHANGE_TO' && a.destinationId) { links++; const t = await figma.getNodeByIdAsync(a.destinationId); if (!t) { broken++; if (bad.length < 5) bad.push(n.name); } }
+  out.prototype = { navLinks: links, broken, examples: bad.length ? bad : 'none', flowStarts: p02.flowStartingPoints.length };
   report.info.check = out;
 });
 return report;
