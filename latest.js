@@ -1,43 +1,30 @@
-// step 352 · Women's club notu: salt okunur ölçüm (Page notice ve Tag renk/altı çizgi/metin stili; kullanılabilir küçük metin stilleri ve nötr metin değişkenleri)
-const report = { done: [], errors: [], info: {} };
+// step 353 · Women's club notu: sarı Page notice (ikon, altı çizili yeşil bağlantı) kaldırılır; yerine mevcut Body/Small stili + color/text/secondary ile tek satır sönük not, sayfa gövdesinin en üstüne
+const report = { done: [], errors: [], info: { frames: [] } };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
 await figma.setCurrentPageAsync(p02);
-const hex = c => '#' + [c.r, c.g, c.b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
-async function paint(n) {
-  const f = n.fills; if (!f || f === figma.mixed || !f.length) return 'none';
-  const p = f[0]; if (p.type !== 'SOLID') return p.type;
-  const b = n.boundVariables && n.boundVariables.fills && n.boundVariables.fills[0];
-  let v = ''; if (b) { const vr = await figma.variables.getVariableByIdAsync(b.id); v = vr ? ' [' + vr.name + ']' : ''; }
-  return hex(p.color) + v;
-}
-async function describe(root) {
-  const out = [];
-  for (const n of [root].concat(root.findAll(() => true))) {
-    if (n.type === 'TEXT') {
-      const st = n.textStyleId && n.textStyleId !== figma.mixed ? await figma.getStyleByIdAsync(n.textStyleId) : null;
-      out.push({ t: 'TEXT', name: n.name, text: n.characters.slice(0, 60), size: n.fontSize, deco: n.textDecoration, color: await paint(n), style: st ? st.name : null });
-    } else if (n.type === 'FRAME' || n.type === 'INSTANCE' || n.type === 'RECTANGLE') {
-      const sw = n.strokes && n.strokes.length ? n.strokeWeight : 0;
-      out.push({ t: n.type, name: n.name, size: Math.round(n.width) + 'x' + Math.round(n.height), fill: await paint(n), stroke: sw });
-    }
-  }
-  return out;
-}
-await step('Page notice ve Tag', async () => {
-  report.info.card = {};
-  for (const dev of ['Desktop', 'Mobile']) {
+const ts = await figma.getLocalTextStylesAsync(); const style = ts.find(s => s.name === 'Body/Small');
+const vs = await figma.variables.getLocalVariablesAsync('COLOR'); const sec = vs.find(v => v.name === 'color/text/secondary');
+if (!style || !sec) throw new Error('stil ya da değişken yok: ' + (style ? '' : 'Body/Small ') + (sec ? '' : 'color/text/secondary'));
+await figma.loadFontAsync(style.fontName);
+const sz = n => Math.round(n.width) + 'x' + Math.round(n.height);
+for (const dev of ['Desktop', 'Mobile']) {
+  await step('Not ' + dev, async () => {
     const f = p02.findAll(n => n.type === 'FRAME' && n.name === "Clubs / Club card / Women's club · " + dev)[0];
-    if (!f) { report.info.card[dev] = 'frame yok'; continue; }
-    const pn = f.findOne(n => n.name === "Page notice · Women's club"), tag = f.findOne(n => n.name === "Tag · Women's club");
-    report.info.card[dev] = { notice: pn ? await describe(pn) : 'yok', tag: tag ? await describe(tag) : 'yok' };
-    if (dev === 'Desktop') report.info.card.noticeParent = pn ? pn.parent.name : null;
-  }
-});
-await step('Metin stilleri ve nötr değişkenler', async () => {
-  const ts = await figma.getLocalTextStylesAsync();
-  report.info.smallStyles = ts.filter(s => s.fontSize <= 14).map(s => s.name + ' ' + s.fontSize);
-  const vs = await figma.variables.getLocalVariablesAsync('COLOR');
-  report.info.textColors = vs.filter(v => /^(color\/)?text\//.test(v.name)).map(v => v.name);
-});
+    if (!f) throw new Error('frame yok');
+    const body = f.findOne(n => n.name === 'Profile body'); if (!body) throw new Error('Profile body yok');
+    const old = body.findOne(n => n.name === "Page notice · Women's club");
+    const before = sz(f), oldH = old ? Math.round(old.height) : 0;
+    if (old) old.remove();
+    body.findAll(n => n.name === "Note · Women's club").forEach(n => n.remove());
+    const t = figma.createText(); t.name = "Note · Women's club";
+    t.fontName = style.fontName; t.characters = "All teams of this club are women's teams.";
+    await t.setTextStyleIdAsync(style.id);
+    t.fills = [figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: 0, g: 0, b: 0 } }, 'color', sec)];
+    body.insertChild(0, t);
+    t.layoutSizingHorizontal = 'FILL'; t.textAutoResize = 'HEIGHT';
+    report.info.frames.push({ dev, frame: before + ' -> ' + sz(f), noticeRemoved: oldH, note: sz(t), deco: t.textDecoration, size: t.fontSize, bodyFirst: body.children.slice(0, 3).map(c => c.name) });
+  });
+}
+figma.notify(report.errors.length ? 'step 353: ' + report.errors.length + ' hata' : 'step 353 tamam');
 return report;
