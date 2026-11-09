@@ -1,0 +1,3 @@
+Icon: "list-filter" (three decreasing horizontal lines) from Lucide (https://lucide.dev), license ISC (commercial use allowed).
+Used in: 01 > 2 Buttons & tags > "Filters button" component (step 374). Drawn from SVG path data in the Runner script, no image file.
+Paths: M3 6h18 · M7 12h10 · M10 18h4 (viewBox 0 0 24 24, stroke 2, round caps and joins).
