@@ -1,4 +1,4 @@
-// step 346 · Kulüp kartı masaüstü: Location kartı bu sayfada örnekten ayrılır (detach), harita alanı uzar; alt kenarı Management ile aynı hizaya gelir
+// step 347 · Kulüp kartı masaüstü Location kartı: dikey boyut içeriğe göre (HUG) olsun, kart harita uzayınca aşağı büyüsün; alt kenar Management ile hizalı
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
@@ -10,22 +10,20 @@ const sz = n => Math.round(n.width) + 'x' + Math.round(n.height);
 const bottom = n => { const a = n.absoluteBoundingBox; return Math.round(a.y + a.height); };
 const top = n => Math.round(n.absoluteBoundingBox.y);
 
-await step('Location detach + harita uzat', async () => {
+await step('Location içeriğe göre büyür', async () => {
   const cols = fd.findOne(n => n.name === 'Profile columns'); const side = cols.findOne(n => n.name === 'Side column'), main = cols.findOne(n => n.name === 'Main column');
-  const mg = main.findOne(n => n.name === 'Management'); let loc = side.children.find(n => /^Location/.test(n.name)); if (!loc || !mg) throw new Error('loc/mg yok');
-  report.info.before = { management: bottom(mg), location: bottom(loc), type: loc.type };
-  if (loc.type === 'INSTANCE') loc = loc.detachInstance();
-  loc.name = 'Location · Spreeufer Stadium';
+  const mg = main.findOne(n => n.name === 'Management'); const loc = side.children.find(n => /^Location/.test(n.name)); if (!loc || !mg) throw new Error('loc/mg yok');
+  report.info.before = { management: bottom(mg), location: bottom(loc), locSize: sz(loc), mode: loc.layoutMode, primary: loc.primaryAxisSizingMode, grow: loc.layoutGrow, align: loc.layoutAlign };
   const map = loc.findOne(n => n.name === 'Map'), img = loc.findOne(n => n.name === 'Map image'), mk = loc.findOne(n => n.name === 'Map marker'), body = loc.findOne(n => n.name === 'Body');
-  if (!map || !img || !body) throw new Error('map/img/body yok: ' + loc.children.map(c => c.name).join(','));
+  loc.layoutGrow = 0; side.layoutAlign = 'INHERIT'; side.layoutGrow = 0;
+  if (map) map.layoutGrow = 0;
+  loc.layoutMode = 'VERTICAL'; loc.primaryAxisSizingMode = 'AUTO';
   const need = bottom(mg) - top(loc); const mapH = need - Math.round(body.height);
   map.resize(map.width, mapH); img.resize(map.width, mapH); img.x = 0; img.y = 0;
   if (mk) { mk.x = (map.width - mk.width) / 2; mk.y = (mapH - mk.height) / 2; }
-  report.info.after = { management: bottom(mg), location: bottom(loc), locSize: sz(loc), map: sz(map), mapImage: sz(img), body: sz(body) };
+  loc.primaryAxisSizingMode = 'AUTO';
+  report.info.after = { management: bottom(mg), location: bottom(loc), locSize: sz(loc), map: sz(map), body: sz(body), side: sz(side), primary: loc.primaryAxisSizingMode };
   report.info.equal = bottom(mg) === bottom(loc);
 });
-
-await step('Boyutlar', async () => {
-  sWeb.resizeWithoutConstraints(1600, Math.ceil(100 + fd.height + 80)); report.info.desktop = sz(fd) + ' section ' + sz(sWeb);
-});
+await step('Boyutlar', async () => { sWeb.resizeWithoutConstraints(1600, Math.ceil(100 + fd.height + 80)); report.info.desktop = sz(fd) + ' section ' + sz(sWeb); });
 return report;
