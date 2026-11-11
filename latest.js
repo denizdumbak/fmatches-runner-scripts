@@ -23,4 +23,18 @@ await step('Section + platform', async () => {
     const P = plats[plat]; const pb = Math.max.apply(null, P.children.map(c => c.y + c.height)); log.push(plat + ' platform h ' + R(P.height) + ', icerik alt ' + R(pb)); }
   report.info.sizes = log;
 });
+await step('Yesil metin taramasi (salt okunur)', async () => {
+  const log = []; const seen = {};
+  for (const plat of ['Mobile', 'Web']) for (const f of secs[plat].children.filter(c => c.type === 'FRAME' && /Club card (·|\/ Minimal data ·) /.test(c.name))) {
+    for (const t of f.findAll(n => n.type === 'TEXT' && n.visible !== false)) {
+      const fl = t.fills && t.fills[0]; if (!fl || fl.type !== 'SOLID') continue;
+      const bv = fl.boundVariables && fl.boundVariables.color; let vn = '-';
+      if (bv) { const v = await figma.variables.getVariableByIdAsync(bv.id); vn = v ? v.name : '?'; }
+      if (!/brand|green|link/i.test(vn)) continue;
+      const key = plat[0] + ' ' + f.name.replace('Clubs / Club card', 'CC') + ' | ' + (t.parent ? t.parent.name : '-') + ' > ' + (t.parent && t.parent.parent ? t.parent.parent.name : '-') + ' > ' + t.name + ' "' + t.characters.slice(0, 30) + '" ' + vn + ' ' + t.fontSize + 'px';
+      if (!seen[key]) { seen[key] = 1; log.push(key); }
+    }
+  }
+  report.info.greenText = log;
+});
 return JSON.stringify(report, null, 1);
