@@ -1,4 +1,4 @@
-// step 391 · satir > rol profili baglantisi: 390'da hedef reddedildi. Adaylari olcer, ilk kabul edileni kullanir; her baglanti kendi try'inda
+// step 392 · satir > rol profili baglantisi: ilk satirlarda eski (Players'tan klonlanan) tepki kalintisi baglantiyi reddettiriyor; satirin tum tepkileri temizlenip tek baglanti yazilir
 const report = { done: [], errors: [], info: {} };
 const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
 await figma.setCurrentPageAsync(p02);
@@ -26,11 +26,11 @@ for (const [sec, device] of [[sWeb, 'Desktop'], [sMob, 'Mobile']]) {
     if (!rows.length) { report.errors.push('satir yok: ' + person + ' ' + device); continue; }
     let dest = null;
     for (const c of cands) {
-      try { const keep = (rows[0].reactions || []).filter(r => !acts(r).some(isNavAct)); await rows[0].setReactionsAsync(keep.concat([nav(c.f)])); dest = c.f; break; }
+      try { report.info['onceki tepki ' + person + ' ' + device] = (rows[0].reactions || []).map(r => (r.trigger && r.trigger.type) + ':' + acts(r).map(a => a && (a.type + '/' + a.navigation + '/' + a.destinationId)).join('|')); await rows[0].setReactionsAsync([nav(c.f)]); dest = c.f; break; }
       catch (e) { report.errors.push(person + ' ' + device + ' aday reddedildi: ' + c.f.name + ' [' + chain(c.f) + '] ' + String(e.message).slice(0, 60)); }
     }
     if (!dest) continue;
-    for (const r of rows.slice(1)) { try { const keep = (r.reactions || []).filter(x => !acts(x).some(isNavAct)); await r.setReactionsAsync(keep.concat([nav(dest)])); } catch (e) { report.errors.push('satir ' + r.name + ': ' + e.message.slice(0, 60)); } }
+    for (const r of rows.slice(1)) { try { await r.setReactionsAsync([nav(dest)]); } catch (e) { report.errors.push('satir ' + r.name + ': ' + e.message.slice(0, 60)); } }
     ok += rows.length; report.info[person + ' ' + device] = rows.length + ' satir -> ' + dest.name;
   }
 }
