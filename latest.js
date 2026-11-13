@@ -1,136 +1,95 @@
-// step 389 · duzeltme: mobil All results grubunda 2 satir var; satir sayisi gruptaki satira gore (min), yarim kalan mobil gruplar yeniden kurulur
+// step 390 · Faz 7 arama (4/4): prototip bag lantilari. Sekmeler (7), All results Show all dugmeleri, mobil Filters <-> liste, satir -> profil. Ok cizilmez (Faz 3-6 kurali)
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
-const R = n => Math.round(n);
-const p01 = figma.root.children.find(p => /^01/.test(p.name)); await p01.loadAsync();
 const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
 await figma.setCurrentPageAsync(p02);
 const isNavAct = a => a && a.type === 'NODE' && a.navigation !== 'CHANGE_TO';
-async function setText(t, s) { const f = t.fontName; if (f === figma.mixed) { await figma.loadFontAsync(t.getRangeFontName(0, 1)); } else { await figma.loadFontAsync(f); } t.characters = s; }
-async function setIn(root, name, s) { const t = root.findOne(n => n.type === 'TEXT' && n.name === name); if (!t) throw new Error('metin yok: ' + name + ' / ' + root.name); await setText(t, s); }
-async function clearNav(root) {
-  for (const n of [root].concat(root.findAll(() => true))) {
-    try { const rs = n.reactions; if (!rs || !rs.length) continue; const keep = rs.filter(r => !(r.actions || (r.action ? [r.action] : [])).some(isNavAct)); if (keep.length !== rs.length) await n.setReactionsAsync(keep); } catch (e) {}
-  }
-}
-function settle(plat, sec) {
-  const secs = plat.children.filter(n => n.type === 'SECTION').sort((a, b) => a.y - b.y);
-  let prev = null; const moved = [];
-  for (const s of secs) { if (s === sec) { prev = s.y + s.height; continue; } if (prev === null) continue; if (s.y < prev + 160) { moved.push(s.name + ' ' + R(s.y) + ' -> ' + R(prev + 160)); s.y = prev + 160; } prev = s.y + s.height; }
-  const bottom = Math.max.apply(null, plat.children.map(n => n.y + n.height));
-  plat.resizeWithoutConstraints(plat.width, Math.ceil(bottom + 120));
-  return moved;
-}
+const acts = r => r.actions || (r.action ? [r.action] : []);
+const nav = (dest, fade) => ({ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'NODE', destinationId: dest.id, navigation: 'NAVIGATE', transition: fade ? { type: 'DISSOLVE', easing: { type: 'EASE_OUT' }, duration: 0.2 } : { type: 'SMART_ANIMATE', easing: { type: 'EASE_OUT' }, duration: 0.3 }, preserveScrollPosition: false, resetVideoPosition: false }] });
 const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web');
 const mob = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
 const sWeb = web.children.find(n => n.type === 'SECTION' && n.name === 'Search results');
 const sMob = mob.children.find(n => n.type === 'SECTION' && n.name === 'Search results');
-const personSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Person result');
-if (!sWeb || !sMob || !personSet) throw new Error('Section ya da Person result yok');
-const flagSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Flag');
-let flagOpts = [];
-if (flagSet) { const k = Object.keys(flagSet.componentPropertyDefinitions).find(x => /^Country/.test(x)); if (k) flagOpts = flagSet.componentPropertyDefinitions[k].variantOptions || []; }
-const MGR = [
-  { name: 'Tom Reilly', meta: 'Head coach · Riverside FC', want: 'Ireland', qual: 'License PRO', g: 'Male', action: 'Message' },
-  { name: 'Ana Ferreira', meta: 'Referee', want: 'Portugal', qual: 'FIFA 1st', g: 'Female', action: 'Message' },
-  { name: 'Jonas Richter', meta: 'Head coach · Spreeufer FC', want: 'Germany', qual: 'License A', g: 'Male', action: 'Message' }
-];
-const INT = [
-  { name: 'Sofia Lindqvist', meta: 'Intermediary · Northline Sports Agency', want: 'Sweden', qual: '14 clients', g: 'Female', action: 'Message' },
-  { name: 'Marc Dubois', meta: 'Intermediary · Atelier Football Management', want: 'France', qual: '9 clients', g: 'Male', action: 'Message' }
-];
-const GROUPS = [
-  { title: 'Managers & officials', lc: 'managers & officials', n: '27', third: 'Qualification', data: MGR },
-  { title: 'Intermediaries', lc: 'intermediaries', n: '9', third: 'Clients', data: INT }
-];
-async function rewriteHeading(g, G) {
-  const head = g.findOne(n => n.name === 'Group heading'); const before = [], after = [];
-  for (const t of head.findAll(n => n.type === 'TEXT')) {
-    before.push(t.characters);
-    let s = t.characters.replace(/Players/g, G.title).replace(/players/g, G.lc).replace(/\b84\b/g, G.n);
-    if (s !== t.characters) await setText(t, s);
-    after.push(t.characters);
-  }
-  return { before, after };
+const stateKey = n => Object.keys(n.componentProperties || {}).find(k => /^State/.test(k));
+const stateOf = n => { const k = stateKey(n); return k ? n.componentProperties[k].value : null; };
+let made = 0;
+async function link(node, dest, label, fade) {
+  if (!node || !dest) { report.errors.push('baglanti yok: ' + label + (node ? '' : ' (oge yok)') + (dest ? '' : ' (hedef yok)')); return false; }
+  const keep = (node.reactions || []).filter(r => !acts(r).some(isNavAct));
+  await node.setReactionsAsync(keep.concat([nav(dest, fade)])); made++; return true;
 }
-async function fixRows(g, G, device) {
-  const list = g.findOne(n => n.name === 'List card');
-  const head = list.findOne(n => n.name === 'Table header');
-  if (head) for (const t of head.findAll(n => n.type === 'TEXT')) {
-    if (t.characters === 'Player') await setText(t, 'Name');
-    if (t.characters === 'Contract until') await setText(t, G.third);
-    if (t.characters === 'Age') { const par = t.parent; if (par !== head && par.children.length === 1) par.visible = false; else t.visible = false; }
+const NAMES = { 'All': 'All results', 'Players': 'Players', 'Managers & officials': 'Managers & officials', 'Intermediaries': 'Intermediaries', 'Clubs': 'Clubs', 'Facilities': 'Facilities', 'Events': 'Events' };
+const screenOf = (sec, label, device) => sec.children.find(c => c.type === 'FRAME' && c.name === 'Search / ' + NAMES[label] + ' · ' + device);
+const log = { tabs: 0, showAll: 0, filters: 0, rows: 0 };
+
+// ---------- 1. sekmeler (7), tum liste ekranlari
+await step('Sekmeler', async () => {
+  for (const [sec, device] of [[sWeb, 'Desktop'], [sMob, 'Mobile']]) {
+    for (const f of sec.children) {
+      if (f.type !== 'FRAME' || !/^Search \//.test(f.name) || /No results|Filters/.test(f.name)) continue;
+      const tabs = f.findOne(n => n.name === 'Tabs' && n.type === 'FRAME'); if (!tabs) { report.errors.push('Tabs yok: ' + f.name); continue; }
+      for (const t of tabs.children) {
+        if (t.type !== 'INSTANCE') continue;
+        const label = t.name.replace(/^Tab · /, ''); const dest = screenOf(sec, label, device);
+        if (stateOf(t) === 'Selected') { await t.setReactionsAsync((t.reactions || []).filter(r => !acts(r).some(isNavAct))); continue; }
+        if (await link(t, dest, f.name + ' / ' + t.name)) log.tabs++;
+      }
+    }
   }
-  const rows = list.children.filter(n => n.type === 'INSTANCE' && /^Player ·/.test(n.name));
-  const cnt = Math.min(G.data.length, rows.length);
-  for (let i = 0; i < cnt; i++) {
-    const row = rows[i], d = G.data[i]; if (!row) throw new Error('satir yok ' + i);
-    const v = personSet.children.find(x => x.name === 'Device=' + device + ', Action=' + d.action + ', State=Default'); if (!v) throw new Error('varyant yok');
-    row.swapComponent(v); row.name = 'Person · ' + d.name;
-    await setIn(row, 'Name', d.name); await setIn(row, 'Meta', d.meta);
-    const facts = row.findAll(n => n.name === 'Fact' && n.type === 'FRAME'); const natF = facts[1], qualF = facts[2];
-    const country = flagOpts.indexOf(d.want) >= 0 ? d.want : (flagOpts.length ? flagOpts[i % flagOpts.length] : d.want);
-    await setIn(natF, 'Nation', country);
-    const fl = natF.findOne(n => n.name === 'Flag'); if (fl) { try { const k = Object.keys(fl.componentProperties).find(x => /^Country/.test(x)); fl.setProperties({ [k]: country }); } catch (e) { report.errors.push('Flag ' + d.name + ': ' + e.message); } }
-    if (d.qual) { await setIn(qualF, 'Value', d.qual); qualF.visible = true; } else if (device === 'Desktop') { qualF.visible = true; const v2 = qualF.findOne(n => n.type === 'TEXT' && n.name === 'Value'); if (v2) await setText(v2, ''); } else { qualF.visible = false; }
-    const sil = row.findOne(n => n.type === 'INSTANCE' && n.componentProperties && ('Gender' in n.componentProperties)); if (sil) { try { sil.setProperties({ Gender: d.g }); } catch (e) { report.errors.push('Silhouette ' + d.name + ': ' + e.message); } }
-  }
-  for (let i = rows.length - 1; i >= cnt; i--) { const r = rows[i]; const prev = list.children[list.children.indexOf(r) - 1]; r.remove(); if (prev && prev.name === 'Divider') prev.remove(); }
-  return list;
-}
-async function addGroups(frame, device) {
-  const players = frame.findOne(n => n.type === 'FRAME' && /^Group · Players/.test(n.name));
-  if (!players) throw new Error('Group · Players yok: ' + frame.name);
-  const col = players.parent; const info = {};
-  // eski turetmeleri temizle
-  for (const c of col.children.slice()) if (/^Group · (Managers|Intermediaries)/.test(c.name)) c.remove();
-  let at = col.children.indexOf(players) + 1;
-  for (const G of GROUPS) {
-    const g = players.clone(); col.insertChild(at++, g); g.name = 'Group · ' + G.title;
-    await clearNav(g);
-    const h = await rewriteHeading(g, G);
-    const list = await fixRows(g, G, device);
-    info[G.title] = { heading: h, rows: list.children.filter(n => /^Person ·/.test(n.name)).length, group: R(g.width) + 'x' + R(g.height) };
-  }
-  info.frame = R(frame.width) + 'x' + R(frame.height);
-  info.groups = col.children.filter(n => /^Group ·/.test(n.name)).map(n => n.name);
-  return info;
-}
-await step('All results · Mobile', async () => {
-  const f = sMob.children.find(c => c.name === 'Search / All results · Mobile'); if (!f) throw new Error('yok');
-  report.info.mobileAll = await addGroups(f, 'Mobile');
 });
-await step('Web satirlari yeniden diz', async () => {
-  const rows = [['All results', 'Players', 'Clubs'], ['Facilities', 'Events', 'No results'], ['Managers & officials', 'Intermediaries']];
-  let y = 100; const log = [];
-  for (const r of rows) {
-    let h = 0;
-    for (const nm of r) { const f = sWeb.children.find(c => c.name === 'Search / ' + nm + ' · Desktop'); if (!f) { report.errors.push('ekran yok: ' + nm); continue; } if (Math.abs(f.y - y) > 0.5) log.push(nm + ' ' + R(f.y) + ' -> ' + R(y)); f.y = y; h = Math.max(h, f.height); }
-    y += h + 151;
+
+// ---------- 2. All results: Show all dugmeleri
+await step('Show all dugmeleri', async () => {
+  for (const [sec, device] of [[sWeb, 'Desktop'], [sMob, 'Mobile']]) {
+    const f = sec.children.find(c => c.name === 'Search / All results · ' + device); if (!f) { report.errors.push('All results yok ' + device); continue; }
+    for (const g of f.findAll(n => n.type === 'FRAME' && /^Group · /.test(n.name))) {
+      const title = g.name.replace('Group · ', ''); const dest = screenOf(sec, title, device);
+      const head = g.findOne(n => n.name === 'Group heading'); const btn = head && head.findOne(n => n.type === 'INSTANCE');
+      if (!btn) { report.errors.push('Show all dugmesi yok: ' + device + ' ' + title); continue; }
+      if (await link(btn, dest, 'Show all ' + title + ' ' + device)) log.showAll++;
+    }
   }
-  const bottom = Math.max.apply(null, sWeb.children.map(c => c.y + c.height));
-  sWeb.resizeWithoutConstraints(sWeb.width, Math.ceil(bottom + 80));
-  report.info.rowMoves = log; report.info.sectionMovedWeb = settle(web, sWeb);
-  report.info.webSection = R(sWeb.width) + 'x' + R(sWeb.height) + ' · Web ' + R(web.width) + 'x' + R(web.height);
 });
-await step('Mobile Section', async () => {
-  const bottom = Math.max.apply(null, sMob.children.map(c => c.y + c.height));
-  sMob.resizeWithoutConstraints(sMob.width, Math.ceil(bottom + 80));
-  report.info.sectionMovedMob = settle(mob, sMob);
-  report.info.mobSection = R(sMob.width) + 'x' + R(sMob.height) + ' · Mobile ' + R(mob.width) + 'x' + R(mob.height);
+
+// ---------- 3. mobil Filters <-> liste (yeni iki kategori)
+await step('Mobil Filters', async () => {
+  for (const title of ['Managers & officials', 'Intermediaries']) {
+    const list = sMob.children.find(c => c.name === 'Search / ' + title + ' · Mobile');
+    const fil = sMob.children.find(c => c.name === 'Search / Filters · ' + title + ' · Mobile');
+    if (!list || !fil) { report.errors.push('ekran yok: ' + title); continue; }
+    const fb = list.findOne(n => n.type === 'INSTANCE' && /Filters/.test(n.name));
+    const sb = fil.findOne(n => n.name === 'Button · Show results');
+    if (await link(fb, fil, 'Filters ' + title)) log.filters++;
+    if (await link(sb, list, 'Show results ' + title)) log.filters++;
+  }
 });
+
+// ---------- 4. satir -> rol profili
+const cand = {};
+await step('Satir > profil', async () => {
+  const frames = [];
+  for (const plat of [web, mob]) for (const s of plat.children) if (s.type === 'SECTION') for (const c of s.children) if (c.type === 'FRAME') frames.push({ plat: plat.name, sec: s.name, f: c });
+  const pick = (re, device) => frames.filter(x => /Profile/i.test(x.sec) && re.test(x.f.name) && x.f.name.indexOf(device) >= 0 && !/Edit|Block|Directory|Minimal|Own|Lightbox|Gallery|Search/i.test(x.f.name));
+  const MAP = [['Tom Reilly', /Manager/i], ['Ana Ferreira', /Referee/i], ['Sofia Lindqvist', /Intermediary/i]];
+  for (const [sec, device] of [[sWeb, 'Desktop'], [sMob, 'Mobile']]) {
+    for (const [person, re] of MAP) {
+      const c = pick(re, device); cand[person + ' ' + device] = c.map(x => x.sec + ' / ' + x.f.name);
+      if (!c.length) continue;
+      const dest = c[0].f;
+      for (const f of sec.children) {
+        if (f.type !== 'FRAME' || !/^Search \//.test(f.name)) continue;
+        for (const r of f.findAll(n => n.type === 'INSTANCE' && n.name === 'Person · ' + person)) { if (await link(r, dest, 'Person ' + person)) log.rows++; }
+      }
+    }
+  }
+  report.info.profileCandidates = cand;
+});
+
+// ---------- kontrol
 await step('Kontrol', async () => {
-  const bb = n => n.absoluteBoundingBox;
-  for (const [nm, sec] of [['web', sWeb], ['mobile', sMob]]) {
-    const ov = []; const kids = sec.children.filter(c => c.type === 'FRAME');
-    for (let i = 0; i < kids.length; i++) for (let j = i + 1; j < kids.length; j++) { const a = bb(kids[i]), b = bb(kids[j]); if (a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y) ov.push(kids[i].name + ' x ' + kids[j].name); }
-    report.info[nm + 'ScreenOverlaps'] = ov.length ? ov : 'none';
-  }
-  let unstyled = 0, dash = 0;
-  for (const sec of [sWeb, sMob]) for (const f of sec.children.filter(c => /All results/.test(c.name))) for (const t of f.findAll(n => n.type === 'TEXT')) { if (typeof t.textStyleId === 'string' && t.textStyleId === '') unstyled++; if (t.characters.indexOf(String.fromCharCode(8212)) >= 0) dash++; }
-  report.info.unstyledText = unstyled; report.info.longDash = dash; report.info.flowStarts = p02.flowStartingPoints.length;
-  const wsecs = web.children.filter(n => n.type === 'SECTION').sort((a, b) => a.y - b.y); const sov = [];
-  for (let i = 0; i < wsecs.length - 1; i++) if (wsecs[i].y + wsecs[i].height > wsecs[i + 1].y) sov.push(wsecs[i].name + ' x ' + wsecs[i + 1].name);
-  report.info.webSectionOverlaps = sov.length ? sov : 'none';
+  let total = 0, broken = 0, click = 0;
+  for (const sec of [sWeb, sMob]) for (const f of sec.children) { if (f.type !== 'FRAME') continue; for (const n of [f].concat(f.findAll(() => true))) { let rs; try { rs = n.reactions; } catch (e) { continue; } if (!rs) continue; for (const r of rs) for (const a of acts(r)) { if (a && a.type === 'NODE' && a.destinationId) { total++; if (a.navigation !== 'CHANGE_TO') click++; const d = await figma.getNodeByIdAsync(a.destinationId); if (!d) broken++; } } } }
+  report.info.links = { made, perKind: log, searchTotalWithHover: total, clickLinks: click, broken };
+  report.info.flowStarts = p02.flowStartingPoints.length;
 });
 return JSON.stringify(report, null, 1);
