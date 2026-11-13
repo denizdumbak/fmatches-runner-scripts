@@ -1,4 +1,4 @@
-// step 388 · Faz 7 arama (3/4): All results (masaustu + mobil) iki yeni grup alir (Managers & officials, Intermediaries); Web Search Section satirlari yeniden dizilir
+// step 389 · duzeltme: mobil All results grubunda 2 satir var; satir sayisi gruptaki satira gore (min), yarim kalan mobil gruplar yeniden kurulur
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const R = n => Math.round(n);
@@ -62,7 +62,8 @@ async function fixRows(g, G, device) {
     if (t.characters === 'Age') { const par = t.parent; if (par !== head && par.children.length === 1) par.visible = false; else t.visible = false; }
   }
   const rows = list.children.filter(n => n.type === 'INSTANCE' && /^Player ·/.test(n.name));
-  for (let i = 0; i < G.data.length; i++) {
+  const cnt = Math.min(G.data.length, rows.length);
+  for (let i = 0; i < cnt; i++) {
     const row = rows[i], d = G.data[i]; if (!row) throw new Error('satir yok ' + i);
     const v = personSet.children.find(x => x.name === 'Device=' + device + ', Action=' + d.action + ', State=Default'); if (!v) throw new Error('varyant yok');
     row.swapComponent(v); row.name = 'Person · ' + d.name;
@@ -74,7 +75,7 @@ async function fixRows(g, G, device) {
     if (d.qual) { await setIn(qualF, 'Value', d.qual); qualF.visible = true; } else if (device === 'Desktop') { qualF.visible = true; const v2 = qualF.findOne(n => n.type === 'TEXT' && n.name === 'Value'); if (v2) await setText(v2, ''); } else { qualF.visible = false; }
     const sil = row.findOne(n => n.type === 'INSTANCE' && n.componentProperties && ('Gender' in n.componentProperties)); if (sil) { try { sil.setProperties({ Gender: d.g }); } catch (e) { report.errors.push('Silhouette ' + d.name + ': ' + e.message); } }
   }
-  for (let i = rows.length - 1; i >= G.data.length; i--) { const r = rows[i]; const prev = list.children[list.children.indexOf(r) - 1]; r.remove(); if (prev && prev.name === 'Divider') prev.remove(); }
+  for (let i = rows.length - 1; i >= cnt; i--) { const r = rows[i]; const prev = list.children[list.children.indexOf(r) - 1]; r.remove(); if (prev && prev.name === 'Divider') prev.remove(); }
   return list;
 }
 async function addGroups(frame, device) {
@@ -95,10 +96,6 @@ async function addGroups(frame, device) {
   info.groups = col.children.filter(n => /^Group ·/.test(n.name)).map(n => n.name);
   return info;
 }
-await step('All results · Desktop', async () => {
-  const f = sWeb.children.find(c => c.name === 'Search / All results · Desktop'); if (!f) throw new Error('yok');
-  report.info.desktopAll = await addGroups(f, 'Desktop');
-});
 await step('All results · Mobile', async () => {
   const f = sMob.children.find(c => c.name === 'Search / All results · Mobile'); if (!f) throw new Error('yok');
   report.info.mobileAll = await addGroups(f, 'Mobile');
