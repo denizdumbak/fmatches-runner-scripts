@@ -1,4 +1,4 @@
-// step 400 · Faz 7 edit formlari (2/4): Manager, Referee, Intermediary icin Edit details mobil. Rol mobil profili klonlanir, Key facts/Club strip/Sticky bar kalkar, hero'ya Leo'nun mobil Details form'u girer. Yeni Mobile Section "Own profile · other roles"
+// step 401 (400 duzeltmesi: ic ice eslesme) · Faz 7 edit formlari (2/4): Manager, Referee, Intermediary icin Edit details mobil. Rol mobil profili klonlanir, Key facts/Club strip/Sticky bar kalkar, hero'ya Leo'nun mobil Details form'u girer. Yeni Mobile Section "Own profile · other roles"
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const R = n => Math.round(n);
@@ -62,7 +62,7 @@ for (const cfg of ROLES) {
     const hero = f.findOne(n => n.type === 'FRAME' && /^Hero/.test(n.name)); if (!hero) throw new Error('Hero yok');
     const idb = hero.children.find(c => c.name === 'Identity block'); if (!idb) throw new Error('Identity block yok');
     const heroBefore = hero.children.map(c => c.name + ' ' + R(c.height)), idBefore = idb.children.map(c => c.name + ' ' + R(c.height));
-    const rm = []; for (const n of f.findAll(x => /^(Key facts|Club strip|Profile actions|Sticky action bar)/.test(x.name))) { try { n.remove(); rm.push(n.name); } catch (e) { report.errors.push('kaldirilamadi ' + n.name + ': ' + e.message); } }
+    const rm = []; const tgt = f.findAll(x => /^(Key facts|Club strip|Profile actions|Sticky action bar)/.test(x.name)).map(x => ({ n: x, name: x.name })); for (const t of tgt) { try { if (t.n.removed) continue; t.n.remove(); rm.push(t.name); } catch (e) { report.errors.push('kaldirilamadi ' + t.name + ': ' + e.message); } }
     const leoForm = srcEdit.findOne(n => n.name === 'Details form'); const form = leoForm.clone();
     hero.insertChild(hero.children.indexOf(idb) + 1, form);
     try { form.layoutSizingHorizontal = 'FILL'; } catch (e) {}
