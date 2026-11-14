@@ -1,15 +1,16 @@
-// step 410 · Faz 8 (2): 02'de yeni "Cookies & privacy" Section'i (Web + Mobile): Cookie banner (Home ustunde), Cookie settings (dialog acik), Privacy policy sayfasi; prototip baglantilari + akis baslangici
+// step 411 · Faz 8 (3): Offline. 01 › 11 · System: Offline notice (Page notice klonu, koyu, Lucide wifi-off) + Offline state (tam ekran mesaj). 02: yeni "Offline" Section'i (Web + Mobile): Offline (sayfa acikken serit) + No connection (tam ekran)
 const report = { done: [], errors: [], info: {} };
 async function step(name, fn) { try { await fn(); report.done.push(name); } catch (e) { report.errors.push(name + ': ' + (e && e.message ? e.message : e)); } }
 const R = n => Math.round(n);
 const sz = n => R(n.width) + 'x' + R(n.height);
 const p01 = figma.root.children.find(p => /^01/.test(p.name)); await p01.loadAsync();
 const p02 = figma.root.children.find(p => /^02/.test(p.name)); await p02.loadAsync();
-await figma.setCurrentPageAsync(p02);
 const allVars = await figma.variables.getLocalVariablesAsync();
 const V = name => { const v = allVars.find(x => x.name === name) || allVars.find(x => x.name.endsWith('/' + name)); if (!v) throw new Error('variable missing: ' + name); return v; };
 const P = v => figma.variables.setBoundVariableForPaint({ type: 'SOLID', color: { r: .5, g: .5, b: .5 } }, 'color', v);
+const PAD = (n, t, r, b, l) => { n.setBoundVariable('paddingTop', V(t)); n.setBoundVariable('paddingRight', V(r)); n.setBoundVariable('paddingBottom', V(b)); n.setBoundVariable('paddingLeft', V(l)); };
 const GAP = (n, v) => n.setBoundVariable('itemSpacing', V(v));
+const RAD = (n, v) => { for (const k of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) n.setBoundVariable(k, V(v)); };
 const styles = await figma.getLocalTextStylesAsync();
 const TS = nm => { const s = styles.find(x => x.name === nm); if (!s) throw new Error('text style yok: ' + nm); return s; };
 for (const s of styles) { try { await figma.loadFontAsync(s.fontName); } catch (e) {} }
@@ -26,167 +27,166 @@ async function clearNav(root) {
       if (keep.length !== rs.length) await n.setReactionsAsync(keep); } catch (e) {}
   }
 }
-const links = [];
-async function link(root, name, dest) {
-  const el = root.findOne(n => n.name === name);
-  if (!el) { report.errors.push('link: ' + name + ' yok / ' + root.name); return; }
-  const keep = (el.reactions || []).filter(r => !(r.actions || []).some(isNavAct));
-  await el.setReactionsAsync(keep.concat([nav(dest)]));
-  links.push(root.name.replace(/^System \//, '') + ' :: ' + name + ' -> ' + dest.name.replace(/^System \//, ''));
+// Lucide wifi-off (ISC)
+const WIFI_OFF = '<path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="m2 2 20 20"/>';
+function mkIcon(body, colorVar, size) {
+  const n = figma.createNodeFromSvg('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>');
+  n.name = 'Icon'; n.fills = [];
+  for (const v of n.findAll(x => x.type === 'VECTOR')) { v.strokes = [P(V(colorVar))]; v.constraints = { horizontal: 'SCALE', vertical: 'SCALE' }; }
+  n.resize(size, size);
+  return n;
 }
-const SEC = 'Cookies & privacy';
+const SYS = '11 · System';
+const sec01 = p01.findOne(n => n.type === 'SECTION' && n.name === SYS);
+if (!sec01) throw new Error(SYS + ' yok (409)');
+const findSet = nm => p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === nm);
+const btnSet = findSet('Button');
+async function button(label, style) {
+  const b = btnSet.children.find(v => v.name === 'Style=' + style + ', State=Default').createInstance(); b.name = 'Button · ' + label;
+  b.setProperties({ 'Label#8:0': label }); const t = b.findOne(n => n.type === 'TEXT'); if (t) await setText(t, label); return b;
+}
+let noticeSet = null, stateSet = null;
+
+// ---------- 1. 01 component'leri
+await figma.setCurrentPageAsync(p01);
+await step('Temizlik 01', async () => {
+  for (const n of sec01.children.slice()) if (/^(Offline notice|Offline state)$/.test(n.name) || (n.type === 'TEXT' && /^Offline/.test(n.characters))) n.remove();
+  for (const n of p01.children.slice()) if (n.type === 'COMPONENT' && /^Device=/.test(n.name)) n.remove();
+});
+await step('Offline notice', async () => {
+  const pn = findSet('Page notice'); if (!pn) throw new Error('Page notice yok');
+  const comps = [];
+  for (const dev of ['Desktop', 'Mobile']) {
+    const c = pn.children.find(v => v.name === 'Device=' + dev).clone(); sec01.appendChild(c); c.name = 'Device=' + dev;
+    c.fills = [P(V('color/bg/inverse'))];
+    const oldIcon = c.findOne(n => n.name === 'Icon'); const idx = c.children.indexOf(oldIcon);
+    const ic = mkIcon(WIFI_OFF, 'color/icon/inverse', 20); c.insertChild(Math.max(0, idx), ic); if (oldIcon) oldIcon.remove();
+    const t = c.findOne(n => n.type === 'TEXT' && n.name === 'Text'); await setText(t, "You're offline. Showing what was loaded last.");
+    t.fills = [P(V('color/text/inverse'))];
+    const l = c.findOne(n => n.type === 'TEXT' && n.name === 'Link'); await setText(l, 'Try again'); l.name = 'Link · Try again';
+    l.fills = [P(V('color/text/inverse'))]; l.textDecoration = 'UNDERLINE';
+    comps.push(c);
+  }
+  const set = figma.combineAsVariants(comps, sec01); set.name = 'Offline notice';
+  set.description = 'Offline notice: appears under Navigation when the connection drops while a page is open, pushes the page down, disappears by itself when the connection is back. Dark system layer, same shape as Page notice. "Try again" reloads the current page.';
+  comps[0].x = 0; comps[0].y = 0; comps[1].x = 0; comps[1].y = comps[0].height + 40;
+  set.resizeWithoutConstraints(1440, comps[1].y + comps[1].height);
+  noticeSet = set;
+});
+await step('Offline state', async () => {
+  const comps = [];
+  for (const dev of ['Desktop', 'Mobile']) {
+    const D = dev === 'Desktop';
+    const c = figma.createComponent(); c.name = 'Device=' + dev; c.fills = [];
+    c.layoutMode = 'VERTICAL'; c.counterAxisAlignItems = 'CENTER'; GAP(c, 'spacing/md');
+    c.primaryAxisSizingMode = 'AUTO'; c.counterAxisSizingMode = 'FIXED'; c.resize(D ? 480 : 358, 100); c.primaryAxisSizingMode = 'AUTO';
+    const box = frame('Icon box', 'HORIZONTAL'); box.primaryAxisAlignItems = 'CENTER'; box.counterAxisAlignItems = 'CENTER';
+    box.primaryAxisSizingMode = 'FIXED'; box.counterAxisSizingMode = 'FIXED'; box.resize(64, 64);
+    box.fills = [P(V('color/bg/subtle'))]; RAD(box, 'radius/full');
+    box.appendChild(mkIcon(WIFI_OFF, 'color/icon/default', 28));
+    c.appendChild(box);
+    const title = await txt('Title', 'No internet connection', D ? 'Heading/H2' : 'Heading/H3', 'color/text/primary');
+    const body = await txt('Body', 'Check your Wi-Fi or mobile data, then try again.', 'Body/Default', 'color/text/secondary');
+    title.textAlignHorizontal = 'CENTER'; body.textAlignHorizontal = 'CENTER';
+    c.appendChild(title); c.appendChild(body); fillW(body); body.textAutoResize = 'HEIGHT';
+    const sp = frame('Spacer', 'VERTICAL'); sp.resize(1, 8); sp.primaryAxisSizingMode = 'FIXED'; c.appendChild(sp);
+    const b = await button('Try again', 'Primary'); c.appendChild(b);
+    sec01.appendChild(c); comps.push(c);
+  }
+  const set = figma.combineAsVariants(comps, sec01); set.name = 'Offline state';
+  set.description = 'Offline state: full-screen message when a page cannot load at all. Shown on a bare page with Navigation only (no Ticker or Footer, they need live data). "Try again" reloads the page.';
+  comps[0].x = 0; comps[0].y = 0; comps[1].x = comps[0].width + 80; comps[1].y = 0;
+  set.resizeWithoutConstraints(comps[1].x + comps[1].width, Math.max(comps[0].height, comps[1].height));
+  stateSet = set;
+});
+await step('01 yerlesim', async () => {
+  const dlg = findSet('Cookie dialog');
+  const note = async (str, y) => { const t = await txt('Note', str, 'Label/Small', 'color/text/secondary'); sec01.appendChild(t); t.x = 80; t.y = y; };
+  let y = dlg.y + dlg.height + 120;
+  await note('Offline notice: shows under Navigation when the connection drops; hides itself when back online.', y - 50);
+  noticeSet.x = 80; noticeSet.y = y; y += noticeSet.height + 120;
+  await note('Offline state: full-screen message when a page cannot load.', y - 50);
+  stateSet.x = 80; stateSet.y = y;
+  const right = Math.max.apply(null, sec01.children.map(n => n.x + n.width)), bottom = Math.max.apply(null, sec01.children.map(n => n.y + n.height));
+  sec01.resizeWithoutConstraints(right + 80, bottom + 80);
+  const arch = p01.findOne(n => n.type === 'SECTION' && /^Archive/.test(n.name)); if (arch) arch.x = sec01.x + sec01.width + 160;
+  report.info.components = { notice: noticeSet.children.map(v => v.name + ' ' + sz(v)), state: stateSet.children.map(v => v.name + ' ' + sz(v)), section: sz(sec01) };
+});
+
+// ---------- 2. 02 ekranlari
+await figma.setCurrentPageAsync(p02);
 const web = p02.children.find(n => n.type === 'SECTION' && n.name === 'Web');
 const mob = p02.children.find(n => n.type === 'SECTION' && n.name === 'Mobile');
-const bannerSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Cookie banner');
-const dialogSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Cookie dialog');
-if (!bannerSet || !dialogSet) throw new Error('Cookie component yok (409)');
-const btnSet = p01.findOne(n => n.type === 'COMPONENT_SET' && n.name === 'Button');
-
-const POLICY = [
-  ['Who we are', 'FriendlyMatches International runs fmatches.com, a global football directory with profiles, search, events and direct messaging.'],
-  ['What we collect', 'The details you add to your profile, your messages and event requests, and basic technical data such as your browser and language.'],
-  ['How we use it', 'To show your profile in search, connect you with clubs, scouts and players, and keep the site secure. We do not sell your data.'],
-  ['Cookies', 'Necessary cookies keep you signed in and the site secure. Analytics and marketing cookies are used only if you allow them.'],
-  ['Your rights', 'You can see, correct or delete your data at any time. Deleting your account hides your profile and removes your personal details.'],
-  ['Contact', 'Questions about your data: privacy@fmatches.com']
-];
-
-// ---------- 0. temizlik + Section
-const secs = {};
+const home = { Web: web.findOne(n => n.type === 'FRAME' && n.name === 'Home / Main · Desktop'), Mobile: mob.findOne(n => n.type === 'FRAME' && n.name === 'Home / Main · Mobile') };
+const SEC = 'Offline', S = { Web: {}, Mobile: {} }, secs = {};
 await step('Section hazirla', async () => {
-  const before = p02.flowStartingPoints.length;
   for (const [key, plat] of [['Web', web], ['Mobile', mob]]) {
     let s = plat.children.find(n => n.type === 'SECTION' && n.name === SEC);
     if (s) { for (const c of s.children.slice()) c.remove(); }
     else {
-      const subs = plat.children.filter(n => n.type === 'SECTION');
-      const last = subs.sort((a, b) => (b.y + b.height) - (a.y + a.height))[0];
-      s = figma.createSection(); s.name = SEC; plat.appendChild(s);
-      s.x = last.x; s.y = last.y + last.height + 160;
+      const ck = plat.children.find(n => n.type === 'SECTION' && n.name === 'Cookies & privacy');
+      s = figma.createSection(); s.name = SEC; plat.appendChild(s); s.x = ck.x; s.y = ck.y + ck.height + 160;
     }
     secs[key] = s;
   }
-  const ids = new Set(); for (const s of Object.values(secs)) for (const n of s.findAll(() => true)) ids.add(n.id);
-  p02.flowStartingPoints = p02.flowStartingPoints.filter(f => !ids.has(f.nodeId) && !/Cookie/.test(f.name));
-  report.info.flowStartsBefore = before;
 });
-
-// ---------- 1. ekranlar
-const home = {
-  Web: web.findOne(n => n.type === 'FRAME' && n.name === 'Home / Main · Desktop'),
-  Mobile: mob.findOne(n => n.type === 'FRAME' && n.name === 'Home / Main · Mobile')
-};
-const settingsScr = {
-  Web: web.findOne(n => n.type === 'FRAME' && n.name === 'Settings / My settings · Desktop'),
-  Mobile: mob.findOne(n => n.type === 'FRAME' && n.name === 'Settings / My settings · Mobile')
-};
-const scrimSrc = {
-  Web: web.findOne(n => n.type === 'RECTANGLE' && n.name === 'Scrim' && R(n.width) === 1440),
-  Mobile: mob.findOne(n => n.type === 'RECTANGLE' && n.name === 'Scrim' && R(n.width) === 390)
-};
-report.info.sources = Object.keys(home).map(k => k + ': home ' + (home[k] ? sz(home[k]) : 'YOK') + ', settings ' + (settingsScr[k] ? 'ok' : 'YOK') + ', scrim ' + (scrimSrc[k] ? 'ok' : 'YOK'));
-const S = { Web: {}, Mobile: {} };
-function viewport(src, sec, name, D) {
-  const f = src.clone(); sec.appendChild(f); f.name = name;
-  f.primaryAxisSizingMode = 'FIXED'; f.resize(D ? 1440 : 390, D ? 900 : 844); f.clipsContent = true;
-  return f;
-}
 for (const key of ['Web', 'Mobile']) {
   const D = key === 'Web', dev = D ? 'Desktop' : 'Mobile', sec = secs[key];
-  await step(key + ' · Cookie banner', async () => {
-    const f = viewport(home[key], sec, 'System / Cookie banner · ' + dev, D);
-    await clearNav(f);
-    const b = bannerSet.children.find(v => v.name === 'Device=' + dev).createInstance(); b.name = 'Cookie banner';
-    f.appendChild(b); b.layoutPositioning = 'ABSOLUTE'; b.x = 0; b.y = f.height - b.height;
-    S[key].banner = f;
-  });
-  await step(key + ' · Cookie settings', async () => {
-    const f = viewport(home[key], sec, 'System / Cookie settings · ' + dev, D);
-    await clearNav(f);
-    const sc = scrimSrc[key].clone(); f.appendChild(sc); sc.layoutPositioning = 'ABSOLUTE'; sc.x = 0; sc.y = 0; sc.resize(f.width, f.height);
-    const d = dialogSet.children.find(v => v.name === 'Device=' + dev).createInstance(); d.name = 'Cookie dialog';
-    f.appendChild(d); d.layoutPositioning = 'ABSOLUTE'; d.x = R((f.width - d.width) / 2); d.y = R((f.height - d.height) / 2);
-    S[key].dialog = f;
-  });
-  await step(key + ' · Privacy policy', async () => {
-    const f = home[key].clone(); sec.appendChild(f); f.name = 'System / Privacy policy · ' + dev;
-    await clearNav(f);
-    for (const c of f.children.slice()) if (!/^(Ticker|Navigation|Footer)$/.test(c.name)) c.remove();
-    const body = settingsScr[key].findOne(n => n.name === 'My settings body').clone();
-    f.insertChild(f.children.findIndex(c => c.name === 'Navigation') + 1, body); body.name = 'Policy body'; fillW(body);
-    const col = body.findOne(n => n.name === 'Column');
-    for (const c of col.children.slice()) if (c.name !== 'Heading row') c.remove();
-    await setText(col.findOne(n => n.type === 'TEXT' && n.name === 'Title'), 'Privacy policy');
-    const meta = await txt('Updated', 'Last updated 14 November 2026', 'Body/Small', 'color/text/secondary');
-    col.appendChild(meta);
-    for (const [h, p] of POLICY) {
-      const s = frame('Part · ' + h, 'VERTICAL'); GAP(s, 'spacing/xs'); col.appendChild(s); fillW(s);
-      const ht = await txt('Heading', h, D ? 'Heading/H3' : 'Heading/H4', 'color/text/primary');
-      const pt = await txt('Body', p, 'Body/Default', 'color/text/primary');
-      s.appendChild(ht); s.appendChild(pt); pt.layoutSizingHorizontal = 'FILL'; pt.textAutoResize = 'HEIGHT';
-      if (h === 'Cookies') {
-        const b = btnSet.children.find(v => v.name === 'Style=Secondary, State=Default').createInstance();
-        b.name = 'Button · Cookie settings'; b.setProperties({ 'Label#8:0': 'Cookie settings' });
-        const bt = b.findOne(n => n.type === 'TEXT'); if (bt) await setText(bt, 'Cookie settings');
-        s.appendChild(b);
-      }
-    }
-    f.primaryAxisSizingMode = 'AUTO';
-    S[key].policy = f;
-  });
-  await step(key + ' · yerlesim', async () => {
-    const list = [S[key].banner, S[key].dialog, S[key].policy].filter(Boolean);
-    list.forEach((f, i) => { f.x = D ? 80 + i * 1920 : 80 + i * 470; f.y = D ? 100 : 80; });
-    const note = await txt('Note · Placeholder policy', 'Privacy policy: placeholder copy. Final legal text comes from FriendlyMatches.', 'Label/Small', 'color/text/secondary');
-    sec.appendChild(note); note.x = list[2] ? list[2].x : 80; note.y = D ? 56 : 40;
+  await step(key + ' ekranlar', async () => {
+    const a = home[key].clone(); sec.appendChild(a); a.name = 'System / Offline · ' + dev;
+    a.primaryAxisSizingMode = 'FIXED'; a.resize(D ? 1440 : 390, D ? 900 : 844); a.clipsContent = true;
+    await clearNav(a);
+    const ni = noticeSet.children.find(v => v.name === 'Device=' + dev).createInstance(); ni.name = 'Offline notice';
+    a.insertChild(a.children.findIndex(c => c.name === 'Navigation') + 1, ni); fillW(ni);
+    const b = home[key].clone(); sec.appendChild(b); b.name = 'System / No connection · ' + dev;
+    await clearNav(b);
+    for (const c of b.children.slice()) if (c.name !== 'Navigation') c.remove();
+    const body = frame('Offline body', 'VERTICAL'); body.fills = [P(V('color/bg/canvas'))];
+    body.primaryAxisAlignItems = 'CENTER'; body.counterAxisAlignItems = 'CENTER';
+    b.appendChild(body); fillW(body); body.layoutSizingVertical = 'FILL';
+    PAD(body, 'spacing/2xl', D ? 'layout/page-gutter' : 'spacing/md', 'spacing/2xl', D ? 'layout/page-gutter' : 'spacing/md');
+    const si = stateSet.children.find(v => v.name === 'Device=' + dev).createInstance(); si.name = 'Offline state'; body.appendChild(si);
+    b.primaryAxisSizingMode = 'FIXED'; b.resize(D ? 1440 : 390, D ? 900 : 844); b.clipsContent = true;
+    body.layoutSizingVertical = 'FILL';
+    a.x = D ? 80 : 80; a.y = D ? 100 : 80; b.x = D ? 2000 : 550; b.y = a.y;
+    S[key] = { a, b };
     const right = Math.max.apply(null, sec.children.map(n => n.x + n.width)), bottom = Math.max.apply(null, sec.children.map(n => n.y + n.height));
     sec.resizeWithoutConstraints(right + 80, bottom + 80);
   });
 }
-
-// ---------- 2. prototip
-await step('Prototip', async () => {
+await step('Prototip + kontrol', async () => {
+  const links = [];
   for (const key of ['Web', 'Mobile']) {
-    const s = S[key], h = home[key]; if (!s.banner || !s.dialog || !s.policy) continue;
-    await link(s.banner, 'Button · Manage', s.dialog);
-    await link(s.banner, 'Button · Accept all', h);
-    await link(s.banner, 'Button · Reject all', h);
-    await link(s.banner, 'Link · Privacy policy', s.policy);
-    await link(s.dialog, 'Button · Save choices', h);
-    await link(s.dialog, 'Button · Accept all', h);
-    await link(s.dialog, 'Button · Reject all', h);
-    await link(s.policy, 'Button · Cookie settings', s.dialog);
+    const s = S[key]; if (!s.a) continue;
+    for (const [scr, nm] of [[s.a, 'Link · Try again'], [s.b, 'Button · Try again']]) {
+      const el = scr.findOne(n => n.name === nm); if (!el) { report.errors.push(scr.name + ': ' + nm + ' yok'); continue; }
+      await el.setReactionsAsync([nav(home[key])]); links.push(scr.name + ' :: ' + nm + ' -> ' + home[key].name);
+    }
   }
-  const mine = new Set([].concat.apply([], ['Web', 'Mobile'].map(k => Object.values(S[k]).map(f => f.id))));
-  const fs = p02.flowStartingPoints.filter(f => !mine.has(f.nodeId));
-  const seen = new Set(fs.map(f => f.nodeId));
-  for (const [nm, node] of [['Web · Cookie banner', S.Web.banner], ['Mobile · Cookie banner', S.Mobile.banner]]) if (node && !seen.has(node.id)) fs.push({ nodeId: node.id, name: nm });
-  p02.flowStartingPoints = fs.filter((f, i, a) => a.findIndex(x => x.nodeId === f.nodeId) === i);
-  report.info.links = links;
-  report.info.flowStartsAfter = p02.flowStartingPoints.length;
-});
-
-// ---------- 3. platformlar + kontrol
-await step('Platform ve kontrol', async () => {
+  const mine = new Set([].concat.apply([], ['Web', 'Mobile'].map(k => S[k].a ? [S[k].a.id, S[k].b.id] : [])));
+  p02.flowStartingPoints = p02.flowStartingPoints.filter(f => !mine.has(f.nodeId));
   for (const plat of [web, mob]) {
-    const bottom = Math.max.apply(null, plat.children.map(n => n.y + n.height));
-    const right = Math.max.apply(null, plat.children.map(n => n.x + n.width));
+    const bottom = Math.max.apply(null, plat.children.map(n => n.y + n.height)), right = Math.max.apply(null, plat.children.map(n => n.x + n.width));
     plat.resizeWithoutConstraints(Math.max(plat.width, right + 120), Math.ceil(bottom + 120));
   }
   mob.x = Math.max(mob.x, web.x + web.width + 400);
   const ov = [];
   for (const plat of [web, mob]) { const ss = plat.children.filter(n => n.type === 'SECTION');
     for (let i = 0; i < ss.length; i++) for (let j = i + 1; j < ss.length; j++) { const a = ss[i], b = ss[j]; if (a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height) ov.push(plat.name + ': ' + a.name + ' x ' + b.name); } }
-  report.info.sectionOverlaps = ov.length ? ov : 'none';
-  report.info.sections = Object.keys(secs).map(k => k + ' ' + R(secs[k].x) + ',' + R(secs[k].y) + ' ' + sz(secs[k]));
-  report.info.screens = [].concat.apply([], ['Web', 'Mobile'].map(k => Object.values(S[k]).map(f => f.name + ' ' + sz(f))));
-  let unstyled = 0; const over = [];
-  for (const k of ['Web', 'Mobile']) for (const f of Object.values(S[k])) {
-    for (const t of f.findAll(n => n.type === 'TEXT')) { let p = t.parent, inst = false; while (p && p !== f) { if (p.type === 'INSTANCE') { inst = true; break; } p = p.parent; } if (!inst && !t.textStyleId) unstyled++; }
-    const pb = f.absoluteBoundingBox;
-    for (const nm of ['Cookie banner', 'Cookie dialog']) { const n = f.findOne(x => x.name === nm); if (n) { const b = n.absoluteBoundingBox; if (b.x < pb.x || b.y < pb.y || b.x + b.width > pb.x + pb.width + .5 || b.y + b.height > pb.y + pb.height + .5) over.push(f.name + ' :: ' + nm); } }
-    const pol = f.findOne(x => x.name === 'Policy body'); if (pol) { const c = pol.findOne(x => x.name === 'Column'); report.info['column · ' + k] = sz(c); }
+  const centre = [];
+  for (const k of ['Web', 'Mobile']) { const s = S[k]; if (!s.b) continue; const st = s.b.findOne(n => n.name === 'Offline state'); const fb = s.b.absoluteBoundingBox, b = st.absoluteBoundingBox;
+    centre.push(k + ' dx ' + R((b.x - fb.x) - (fb.x + fb.width - b.x - b.width)) + ' stateTop ' + R(b.y - fb.y) + ' stateBottomGap ' + R(fb.y + fb.height - b.y - b.height)); }
+  let unbound = 0, unstyled = 0;
+  for (const set of [noticeSet, stateSet]) for (const n of set.findAll(() => true)) {
+    let p = n.parent, inst = false; while (p && p !== set) { if (p.type === 'INSTANCE') { inst = true; break; } p = p.parent; } if (inst || n.type === 'INSTANCE') continue;
+    try { for (const f of (n.fills || [])) if (f.type === 'SOLID' && !(f.boundVariables && f.boundVariables.color)) unbound++; } catch (e) {}
+    try { for (const f of (n.strokes || [])) if (f.type === 'SOLID' && !(f.boundVariables && f.boundVariables.color)) unbound++; } catch (e) {}
+    if (n.type === 'TEXT' && !n.textStyleId) unstyled++;
   }
-  report.info.check = { unstyledText: unstyled, outsideScreen: over.length ? over : 'none' };
+  report.info.links = links;
+  report.info.flowStarts = p02.flowStartingPoints.length;
+  report.info.screens = [].concat.apply([], ['Web', 'Mobile'].map(k => S[k].a ? [S[k].a.name + ' ' + sz(S[k].a), S[k].b.name + ' ' + sz(S[k].b)] : []));
+  report.info.sections = Object.keys(secs).map(k => k + ' ' + R(secs[k].x) + ',' + R(secs[k].y) + ' ' + sz(secs[k]));
+  report.info.check = { sectionOverlaps: ov.length ? ov : 'none', centre, unboundPaints: unbound, unstyledText: unstyled };
 });
 return report;
