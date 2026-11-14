@@ -157,7 +157,8 @@ await step('Prototip', async () => {
     await link(s.dialog, 'Button · Reject all', h);
     await link(s.policy, 'Button · Cookie settings', s.dialog);
   }
-  const fs = p02.flowStartingPoints.slice();
+  const mine = new Set([].concat.apply([], ['Web', 'Mobile'].map(k => Object.values(S[k]).map(f => f.id))));
+  const fs = p02.flowStartingPoints.filter(f => !mine.has(f.nodeId));
   const seen = new Set(fs.map(f => f.nodeId));
   for (const [nm, node] of [['Web · Cookie banner', S.Web.banner], ['Mobile · Cookie banner', S.Mobile.banner]]) if (node && !seen.has(node.id)) fs.push({ nodeId: node.id, name: nm });
   p02.flowStartingPoints = fs.filter((f, i, a) => a.findIndex(x => x.nodeId === f.nodeId) === i);
